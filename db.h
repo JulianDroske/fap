@@ -4,7 +4,8 @@
 #include "stdint.h"
 #include "sqlite3.h"
 
-void db_logerror(void *p, int code, const char *msg);
+void db_sqlite3_logerror(void *p, int code, const char *msg);
+void db_logerror(const char *format, ...);
 sqlite3_stmt *db_stmt_va(sqlite3 *db, const char *sql, const char *spec, va_list args);
 sqlite3_stmt *db_stmt(sqlite3 *db, const char *sql, const char *spec, ...);
 void db_stmt_columns_va(sqlite3_stmt *stmt, const char *spec, va_list args);

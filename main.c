@@ -3,6 +3,7 @@
 #endif
 
 #include "stdint.h"
+#include "stdarg.h"
 #include "stdio.h"
 #include "stdlib.h"
 #include "string.h"
@@ -57,8 +58,14 @@ const char *timestamp_localstring(int64_t timestamp) {
 const char *database_pathname = "/var/lib/fap/fap.db";
 const char *package_manager_name = NULL;
 
+void main_log(const char *format, ...) {
+  va_list args; va_start(args, format);
+  vfprintf(stderr, format, args);
+  va_end(args);
+}
+
 void print_help() {
-  fprintf(stderr, "%s",
+  main_log("%s",
     "fap - file app process monitor (demo)" "\n"
     "usage: fap [options..] <command> [params..]" "\n"
     "\n"
@@ -92,7 +99,7 @@ void print_help() {
     "    -a, --all                 also show deleted files" "\n"
     "| o, orphans                list files created by uninstalled programs" "\n"
     "    -a, --all                 include programs with no pm/package detected" "\n"
-    "    --delete                  delete these files and remove log" "\n"
+    "    --delete                  delete these files and forget them" "\n"
     "| u, update                 recheck file, program and package status" "\n"
     "|Xf, forget                 clean records of deleted files" "\n"
   );
@@ -111,7 +118,7 @@ int main_monitor(int argc, const char **argv) {
 
   int cliopts_len = tinycli_parse(opts, --argc, ++argv);
   if (cliopts_len < 0) {
-    fprintf(stderr, "invalid argument around %s\n", argv[-cliopts_len - 1]);
+    main_log("invalid argument around %s\n", argv[-cliopts_len - 1]);
     print_help(); return 1;
   }
   argc -= cliopts_len; argv += cliopts_len;
@@ -126,7 +133,7 @@ int main_monitor(int argc, const char **argv) {
       case 'C': case 'c': filter_ops |= FAN_CREATE; break;
       case 'D': case 'd': filter_ops |= FAN_DELETE; break;
       case 'M': case 'm': filter_ops |= FAN_MOVE; break;
-      default: fprintf(stderr, "unrecognized operation: %c\n", *s);
+      default: main_log("unrecognized operation: %c\n", *s);
         print_help(); return 1;
       }
     }
@@ -140,7 +147,7 @@ int main_monitor(int argc, const char **argv) {
     mkdirnames(database_pathname);
     db = db_open(database_pathname);
     if (!db) {
-      fprintf(stderr, "failed to open sqlite database %s\n", database_pathname);
+      main_log("failed to open sqlite database %s\n", database_pathname);
       return 1;
     }
   }
@@ -150,37 +157,37 @@ int main_monitor(int argc, const char **argv) {
     pm = pm_get(package_manager_name);
     if (pm) {
       pm_id = db_add_pm(db, pm->name);
-      if (pm_id) fprintf(stderr, "using package manager '%s'\n", pm->name);
-      else fprintf(stderr, "failed to record package manager\n");
+      if (pm_id) main_log("using package manager '%s'\n", pm->name);
+      else main_log("failed to record package manager\n");
     }
-    else fprintf(stderr, "warning: failed to find pm '%s'\n", package_manager_name);
+    else main_log("warning: failed to find pm '%s'\n", package_manager_name);
   }
 
   struct pstrack pstrack = {};
   if (!pstrack_init(&pstrack, 64)) {
-    fprintf(stderr, "failed to init pstrack: %d\n", errno);
+    main_log("failed to init pstrack: %d\n", errno);
     return 1;
   }
 
   // TODO fini
   struct fatrack fatrack = {};
   if (!fatrack_init(&fatrack, FAN_ONDIR | FAN_EVENT_ON_CHILD | FAN_CREATE | FAN_DELETE | FAN_MOVE)) {
-    fprintf(stderr, "failed to init fatrack: %s\n", fatrack.error); return 1;
+    main_log("failed to init fatrack: %s\n", fatrack.error); return 1;
   }
   // if (fatrack_haserror(&fatrack))
-  //   fprintf(stderr, "fatrack: %s\n", fatrack.error);
+  //   main_log("fatrack: %s\n", fatrack.error);
 
   while (argc) {
     static char path[PATH_MAX];
     struct stat st;
     if (realpath(*argv, path) && !stat(path, &st) && S_ISDIR(st.st_mode)) {
       if (!fatrack_markpath(&fatrack, path)) {
-        fprintf(stderr, "failed to record target directory: %s -> %s: %s\n", *argv, path, fatrack.error);
+        main_log("failed to record target directory: %s -> %s: %s\n", *argv, path, fatrack.error);
         return 1;
       }
     }
     else {
-      fprintf(stderr, "invalid directory in argument: %s\n", *argv);
+      main_log("invalid directory in argument: %s\n", *argv);
       return 1;
     }
     --argc; ++argv;
@@ -188,7 +195,7 @@ int main_monitor(int argc, const char **argv) {
 
   fatrack_marksubmounts(&fatrack);
   // if (fatrack_haserror(&fatrack))
-  //   fprintf(stderr, "failed to mark mountpoints: %s\n", fatrack.error);
+  //   main_log("failed to mark mountpoints: %s\n", fatrack.error);
 
   pid_t self_pid = getpid();
 
@@ -199,7 +206,7 @@ int main_monitor(int argc, const char **argv) {
     struct fatrack_event ev = {};
     int stat = fatrack_next(&fatrack, &ev);
     if (fatrack_haserror(&fatrack))
-      fprintf(stderr, "fatrack: %s\n", fatrack.error);
+      main_log("fatrack: %s\n", fatrack.error);
     if (stat < 0) break; if (!stat) continue;
 
     struct fanotify_event_metadata *metadata = &ev.metadata;
@@ -208,7 +215,7 @@ int main_monitor(int argc, const char **argv) {
 
     struct pstrack_procinfo proc = {};
     if (!pstrack_query(&pstrack, &proc, metadata->pid)) {
-      fprintf(stderr, "pstrack: failed to query pid %d: %d\n", metadata->pid, errno);
+      main_log("pstrack: failed to query pid %d: %d\n", metadata->pid, errno);
       continue;
     }
 
@@ -242,19 +249,19 @@ int main_monitor(int argc, const char **argv) {
 
     int exe_id = db_add_exe(db, proc.pathname);
     if (!exe_id)
-      { fprintf(stderr, "failed to record exe %s\n", proc.pathname); break; }
+      { main_log("failed to record exe %s\n", proc.pathname); break; }
     /* use parent process if ignored */
     int exe_pid = metadata->pid;
     while (db_check_exe_ignored(db, exe_id)) {
       exe_pid = proc.ppid;
       if (exe_pid == self_pid) continue main_loop;
       if (!pstrack_query(&pstrack, &proc, exe_pid)) {
-        fprintf(stderr, "pstrack: failed to query pid %d: %d\n", exe_pid, errno);
+        main_log("pstrack: failed to query pid %d: %d\n", exe_pid, errno);
         break;
       }
       exe_id = db_add_exe(db, proc.pathname);
       if (!exe_id) {
-        fprintf(stderr, "failed to add exe %s\n", proc.pathname);
+        main_log("failed to add exe %s\n", proc.pathname);
         continue main_loop;
       }
     }
@@ -266,7 +273,7 @@ int main_monitor(int argc, const char **argv) {
         pkg_id = db_add_pkg(db, pm_id, name);
       if (pkg_id)
         if (!db_set_exe_pkg(db, exe_id, pkg_id))
-          fprintf(stderr, "failed to assign exe %d with pkg %d\n", exe_id, pkg_id);
+          main_log("failed to assign exe %d with pkg %d\n", exe_id, pkg_id);
     }
 
     const char *filepath = ev.filepath;
@@ -276,7 +283,7 @@ int main_monitor(int argc, const char **argv) {
     else {
       if (metadata->mask & FAN_CREATE) {
         if (!db_record_file_create(db, filepath, exe_id, timestamp))
-          { fprintf(stderr, "failed to record file creation %s\n", filepath); break; }
+          { main_log("failed to record file creation %s\n", filepath); break; }
       }
       if (metadata->mask & FAN_DELETE)
         db_record_file_delete(db, filepath, exe_id, timestamp);
@@ -297,14 +304,14 @@ int main_list(int argc, const char **argv) {
 
   int cliopts_len = tinycli_parse(opts, --argc, ++argv);
   if (cliopts_len < 0) {
-    fprintf(stderr, "invalid argument around %s\n", argv[-cliopts_len - 1]);
+    main_log("invalid argument around %s\n", argv[-cliopts_len - 1]);
     print_help(); return 1;
   }
   argc -= cliopts_len; argv += cliopts_len;
 
   sqlite3 *db = db_open(database_pathname);
   if (!db) {
-    fprintf(stderr, "failed to open sqlite database %s\n", database_pathname);
+    main_log("failed to open sqlite database %s\n", database_pathname);
     return 1;
   }
 
@@ -318,7 +325,7 @@ int main_list(int argc, const char **argv) {
     "  left join pkg delpkg on delpkg.pkg_id = delexe.pkg_id"
     "  left join pm delpm on delpm.pm_id = delpkg.pm_id"
     "  where ? or file.file_exist;", "i", opt_all != NULL);
-  if (!stmt) { fprintf(stderr, "failed to prepare sql\n"); return 1; }
+  if (!stmt) { main_log("failed to prepare sql\n"); return 1; }
   while (sqlite3_step(stmt) == SQLITE_ROW) {
     int exist;
     const char *file_path, *exe_path, *pkg_name, *pm_name,
@@ -358,7 +365,7 @@ int main_show(int argc, const char **argv) {
 
   int cliopts_len = tinycli_parse(opts, --argc, ++argv);
   if (cliopts_len < 0) {
-    fprintf(stderr, "invalid argument around %s\n", argv[-cliopts_len - 1]);
+    main_log("invalid argument around %s\n", argv[-cliopts_len - 1]);
     print_help(); return 1;
   }
   argc -= cliopts_len; argv += cliopts_len;
@@ -369,7 +376,7 @@ int main_show(int argc, const char **argv) {
 
   sqlite3 *db = db_open(database_pathname);
   if (!db) {
-    fprintf(stderr, "failed to open sqlite database %s\n", database_pathname);
+    main_log("failed to open sqlite database %s\n", database_pathname);
     return 1;
   }
 
@@ -404,7 +411,7 @@ int main_show(int argc, const char **argv) {
       "  where (?1 is null or ?1 = exe.exe_path) and (?2 is null or ?2 = pkg.pkg_name) and (?3 is null or ?3 = pm.pm_name)"
       "  order by exe.pkg_id;",
       "sss", exe_path, pkg_name, pm_name);
-    if (!stmt) { fprintf(stderr, "failed to prepare sql query\n"); return 1; }
+    if (!stmt) { main_log("failed to prepare sql query\n"); return 1; }
 
     while (sqlite3_step(stmt) == SQLITE_ROW) {
       int exe_id, pkg_id; const char *exe_path, *pkg_name, *pm_name;
@@ -427,7 +434,7 @@ int main_show(int argc, const char **argv) {
         "select file_exist, file_path, file_time_create, exe_id_create, exe_id_delete from file"
         "  where (file_exist or ?3) and (exe_id_create = ?1 or (not ?2 and exe_id_delete = ?1));",
         "iii", exe_id, only_creation, show_all);
-      if (!file_stmt) { fprintf(stderr, "failed to prepare sql query\n"); continue; }
+      if (!file_stmt) { main_log("failed to prepare sql query\n"); continue; }
       while (sqlite3_step(file_stmt) == SQLITE_ROW) {
         int exist, exe_id_create, exe_id_delete; const char *file_path;
         int64_t time_create;
@@ -461,7 +468,7 @@ int main_orphans(int argc, const char **argv) {
 
   int cliopts_len = tinycli_parse(opts, --argc, ++argv);
   if (cliopts_len < 0) {
-    fprintf(stderr, "invalid argument around %s\n", argv[-cliopts_len - 1]);
+    main_log("invalid argument around %s\n", argv[-cliopts_len - 1]);
     print_help(); return 1;
   }
   argc -= cliopts_len; argv += cliopts_len;
@@ -471,7 +478,7 @@ int main_orphans(int argc, const char **argv) {
 
   sqlite3 *db = db_open(database_pathname);
   if (!db) {
-    fprintf(stderr, "failed to open sqlite database %s\n", database_pathname);
+    main_log("failed to open sqlite database %s\n", database_pathname);
     return 1;
   }
 
@@ -483,7 +490,7 @@ int main_orphans(int argc, const char **argv) {
     "  where file.file_exist and not exe.exe_exist and"
     "    (pkg.pkg_exist or (? or pkg.pkg_exist is not null));",
     "i", include_nopkg);
-  if (!stmt) { fprintf(stderr, "failed to prepare sql query\n"); return 1; }
+  if (!stmt) { main_log("failed to prepare sql query\n"); return 1; }
   while (sqlite3_step(stmt) == SQLITE_ROW) {
     const char *file_path, *exe_path, *pkg_name, *pm_name; int exe_id;
     int64_t time_create;
@@ -497,7 +504,7 @@ int main_orphans(int argc, const char **argv) {
     puts("");
 
     // TODO
-    if (perform_delete) fprintf(stderr, "file deletion is not implemented yet\n");
+    if (perform_delete) main_log("file deletion is not implemented yet\n");
   }
   sqlite3_finalize(stmt);
 
@@ -508,7 +515,7 @@ int main_orphans(int argc, const char **argv) {
 int main_update(int argc, const char **argv) {
   sqlite3 *db = db_open(database_pathname);
   if (!db) {
-    fprintf(stderr, "failed to open sqlite database %s\n", database_pathname);
+    main_log("failed to open sqlite database %s\n", database_pathname);
     return 1;
   }
 
@@ -516,13 +523,13 @@ int main_update(int argc, const char **argv) {
   struct pm *pm = pm_get(package_manager_name);
   if (pm) {
     pm_id = db_add_pm(db, pm->name);
-    if (!pm_id) fprintf(stderr, "failed to add package manager %s\n", pm->name);
-  } else fprintf(stderr, "warning: failed to get package manager %s\n", package_manager_name);
+    if (!pm_id) main_log("failed to add package manager %s\n", pm->name);
+  } else main_log("warning: failed to get package manager %s\n", package_manager_name);
 
   /* file */
 
   sqlite3_stmt *stmt = db_stmt(db, "select file_path, file_exist from file;", NULL);
-  if (!stmt) { fprintf(stderr, "failed to prepare sql query\n"); return 1; }
+  if (!stmt) { main_log("failed to prepare sql query\n"); return 1; }
   while (sqlite3_step(stmt) == SQLITE_ROW) {
     const char *file_path; int file_exist;
     db_stmt_columns(stmt, "si", &file_path, &file_exist);
@@ -530,16 +537,16 @@ int main_update(int argc, const char **argv) {
     int exist = 0;
     if (check_file_exist(&exist, file_path)) {
       if (exist != file_exist && !db_set_file_exist(db, file_path, exist))
-        fprintf(stderr, "failed to update status for file %s\n", file_path);
+        main_log("failed to update status for file %s\n", file_path);
     }
-    else fprintf(stderr, "failed to check file %s existence: %d\n", file_path, errno);
+    else main_log("failed to check file %s existence: %d\n", file_path, errno);
   }
   sqlite3_finalize(stmt);
 
   /* program/exe */
 
   stmt = db_stmt(db, "select exe_id, exe_path, exe_exist, pkg_id from exe;", NULL);
-  if (!stmt) { fprintf(stderr, "failed to prepare sql query\n"); return 1; }
+  if (!stmt) { main_log("failed to prepare sql query\n"); return 1; }
   while (sqlite3_step(stmt) == SQLITE_ROW) {
     int exe_id, exe_exist, pkg_id; const char *exe_path;
     db_stmt_columns(stmt, "isii", &exe_id, &exe_path, &exe_exist, &pkg_id);
@@ -547,17 +554,17 @@ int main_update(int argc, const char **argv) {
     int exist = 0;
     if (check_file_exist(&exist, exe_path)) {
       if (exist != exe_exist && !db_set_exe_exist(db, exe_id, exist))
-        fprintf(stderr, "failed to update status for program %s\n", exe_path);
+        main_log("failed to update status for program %s\n", exe_path);
     }
-    else fprintf(stderr, "failed to check program %s existence: %d\n", exe_path, errno);
+    else main_log("failed to check program %s existence: %d\n", exe_path, errno);
 
     if (exist && !pkg_id && pm && pm_id) {
       static char name[PM_NAME_MAX];
       if (pm->queryfile(name, exe_path)) {
         pkg_id = db_add_pkg(db, pm_id, name);
-        if (!pkg_id) fprintf(stderr, "failed to record package [%s:%s]", pm->name, name);
+        if (!pkg_id) main_log("failed to record package [%s:%s]", pm->name, name);
         else if (!db_set_exe_pkg(db, exe_id, pkg_id))
-          fprintf(stderr, "failed to update package [%s:%s]", pm->name, name);
+          main_log("failed to update package [%s:%s]", pm->name, name);
       }
     }
   }
@@ -566,7 +573,7 @@ int main_update(int argc, const char **argv) {
   /* package */
 
   stmt = db_stmt(db, "select pkg.pkg_id, pkg.pkg_name, pkg.pkg_exist, pm.pm_id, pm.pm_name from pkg left join pm on pm.pm_id = pkg.pm_id;", NULL);
-  if (!stmt) { fprintf(stderr, "failed to prepare sql query\n"); return 1; }
+  if (!stmt) { main_log("failed to prepare sql query\n"); return 1; }
   int last_pm_id = 0; struct pm *pkg_pm = NULL;
   while (sqlite3_step(stmt) == SQLITE_ROW) {
     int pkg_id, pkg_exist, pm_id; const char *pkg_name, *pm_name;
@@ -574,18 +581,18 @@ int main_update(int argc, const char **argv) {
 
     if (last_pm_id != pm_id) {
       pkg_pm = pm_get(pm_name);
-      if (!pkg_pm) fprintf(stderr, "failed to get package manager %s\n", pm_name);
+      if (!pkg_pm) main_log("failed to get package manager %s\n", pm_name);
       last_pm_id = pm_id;
     }
 
-    if (!pkg_pm) { fprintf(stderr, "skipped package %s\n", pkg_name); continue; }
+    if (!pkg_pm) { main_log("skipped package %s\n", pkg_name); continue; }
 
     int exist = 0;
     if (pkg_pm->checkpkg(&exist, pkg_name)) {
       if (exist != pkg_exist && !db_set_pkg_exist(db, pkg_id, exist))
-        fprintf(stderr, "failed to update status for package %s\n", pkg_name);
+        main_log("failed to update status for package %s\n", pkg_name);
     }
-    else fprintf(stderr, "failed to check status of package %s with pm %s\n", pkg_name, pm_name);
+    else main_log("failed to check status of package %s with pm %s\n", pkg_name, pm_name);
   }
   sqlite3_finalize(stmt);
 
@@ -619,7 +626,7 @@ int main(int argc, const char **argv) {
 
   int cliopts_len = tinycli_parse(opts, --argc, ++argv);
   if (cliopts_len < 0) {
-    fprintf(stderr, "invalid argument around %s\n", argv[-cliopts_len - 1]);
+    main_log("invalid argument around %s\n", argv[-cliopts_len - 1]);
     print_help(); return 1;
   }
 
@@ -638,7 +645,7 @@ int main(int argc, const char **argv) {
 
   argc -= cliopts_len; argv += cliopts_len;
   if (argc <= 0) {
-    fprintf(stderr, "needs a command\n"); print_help(); return 1;
+    main_log("needs a command\n"); print_help(); return 1;
   }
 
   const char *command = argv[0];
@@ -649,7 +656,7 @@ int main(int argc, const char **argv) {
     else if (!strcmp(command, cmd->name)) return cmd->func(argc, argv);
   }
 
-  fprintf(stderr, "unrecognized command: %s\n", command);
+  main_log("unrecognized command: %s\n", command);
   print_help();
   return 1;
 }

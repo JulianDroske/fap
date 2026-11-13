@@ -8,6 +8,7 @@ OBJS += db.o pm.o main.o
 OUT ?= fap
 
 CC ?= cc
+CFLAGS += -std=c99 -Wall
 LIBS += -lsqlite3
 
 all: $(OUT)
@@ -20,4 +21,9 @@ db.h: db.c Makefile
 
 $(OUT): $(OBJS) Makefile
 	$(CC) -o $@ $(OBJS) $(LDFLAGS) $(LIBS)
+
+clean:
+	@rm -f $(OBJS) $(OUT)
+
+.PHONY: all clean
 

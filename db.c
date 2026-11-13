@@ -31,8 +31,14 @@ const char *db_initsql =
   "  file_time_delete integer);"
   "pragma journal_mode=WAL;";
 
-void db_logerror(void *p, int code, const char *msg) {
+void db_sqlite3_logerror(void *p, int code, const char *msg) {
   fprintf(stderr, "sqlite3: %s (%d)\n", msg, code);
+}
+
+void db_logerror(const char *format, ...) {
+  va_list args; va_start(args, format);
+  fprintf(stderr, "db: "); vfprintf(stderr, format, args); fprintf(stderr, "\n");
+  va_end(args);
 }
 
 sqlite3_stmt *db_stmt_va(sqlite3 *db, const char *sql, const char *spec, va_list args) {
@@ -85,13 +91,13 @@ void db_stmt_columns(sqlite3_stmt *stmt, const char *spec, ...) {
 sqlite3 *db_open(const char *pathname) {
   sqlite3 *db = NULL;
   if (sqlite3_open(pathname, &db)) {
-    fprintf(stderr, "failed to open sqlite database %s\n", pathname);
+    db_logerror("failed to open sqlite database %s\n", pathname);
     return NULL;
   }
 
   char *sqlerr = NULL;
   if (sqlite3_exec(db, db_initsql, NULL, NULL, &sqlerr)) {
-    fprintf(stderr, "failed to init database: %s\n", sqlerr);
+    db_logerror("failed to init database: %s\n", sqlerr);
     sqlite3_free(sqlerr);
     sqlite3_close(db);
     return NULL;
@@ -106,7 +112,7 @@ int db_query_intbystr(sqlite3 *db, const char *sql, const char *string) {
   if (!sqlite3_prepare_v2(db, sql, -1, &stmt, NULL)) {
     sqlite3_bind_text(stmt, 1, string, -1, NULL);
     while (sqlite3_step(stmt) == SQLITE_ROW) {
-      if (i) fprintf(stderr, "intbystr: duplicated results received [%s]\n", sql);
+      if (i) db_logerror("db_query_intbystr: duplicated results received [%s]\n", sql);
       i = sqlite3_column_int(stmt, 0);
     }
     sqlite3_finalize(stmt);
@@ -122,7 +128,7 @@ int db_query_int(sqlite3 *db, const char *sql, const char *spec, ...) {
   if (stmt) {
     while (sqlite3_step(stmt) == SQLITE_ROW) {
       if (i) {
-        fprintf(stderr, "db_query_int: duplicated results received [%s]\n", sql);
+        db_logerror("db_query_int: duplicated results received [%s]\n", sql);
         break;
       }
       i = sqlite3_column_int(stmt, 0);
