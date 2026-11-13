@@ -14,7 +14,8 @@ int tinycli_parse(struct tinycli_option *opts, int argc, const char **argv) {
 
     struct tinycli_option *target = NULL;
     if (*arg != '-') {
-      /* short option */
+      /* short option, no conjunction is allowed */
+      if (!arg[0] || arg[1]) return -pos - 1;
       for (struct tinycli_option *opt = opts; opt->name; ++opt)
         if (opt->alias && opt->alias == *arg) { target = opt; break; }
     }
