@@ -1,11 +1,26 @@
 #include "db.h"
 
 #include "stdio.h"
+#include "string.h"
 #include "stdint.h"
 #include "stdarg.h"
 #include "sqlite3.h"
 
-void db_sqlite3_logerror(void *p, int code, const char *msg) {
+#include "sys/stat.h"
+#include "linux/limits.h"
+
+// TODO fstat...
+void db_mkdirnames(const char *pathname) {
+  static char path[PATH_MAX];
+  strncpy(path, pathname, PATH_MAX);
+  size_t len = strlen(path);
+  for (char *p = path, *end = path + len; p < end; ++p) {
+    if (*p != '/') continue;
+    *p = 0; mkdir(path, 0755); *p = '/';
+  }
+}
+
+void db_sqlite3_logger(void *p, int code, const char *msg) {
   fprintf(stderr, "sqlite3: %s (%d)\n", msg, code);
 }
 
@@ -101,6 +116,9 @@ const char *db_initsql =
   "pragma journal_mode=WAL;";
 
 sqlite3 *db_open(const char *pathname) {
+  if (!pathname) return NULL;
+  db_mkdirnames(pathname);
+
   sqlite3 *db = NULL;
   if (sqlite3_open(pathname, &db)) {
     db_logerror("failed to open sqlite database %s\n", pathname);

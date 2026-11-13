@@ -21,17 +21,6 @@
 #include "pm.h"
 #include "db.h"
 
-// TODO fstat...
-void mkdirnames(const char *pathname) {
-  static char path[PATH_MAX];
-  strncpy(path, pathname, PATH_MAX);
-  size_t len = strlen(path);
-  for (char *p = path, *end = path + len; p < end; ++p) {
-    if (*p != '/') continue;
-    *p = 0; mkdir(path, 0755); *p = '/';
-  }
-}
-
 int check_file_exist(int *exist, const char *pathname) {
   struct stat stat;
   if (!lstat(pathname, &stat)) { *exist = 1; return 1; }
@@ -145,7 +134,6 @@ int main_monitor(int argc, const char **argv) {
 
   sqlite3 *db = NULL;
   if (save_db) {
-    mkdirnames(database_pathname);
     db = db_open(database_pathname);
     if (!db) {
       main_log("failed to open sqlite database %s\n", database_pathname);
@@ -615,7 +603,7 @@ struct main_command {
 };
 
 int main(int argc, const char **argv) {
-  sqlite3_config(SQLITE_CONFIG_LOG, db_logerror, NULL);
+  sqlite3_config(SQLITE_CONFIG_LOG, db_sqlite3_logger, NULL);
   setlinebuf(stdout);
 
   const char **opt_help = NULL, **opt_database = NULL, **opt_pm = NULL;
