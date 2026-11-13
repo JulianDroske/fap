@@ -207,7 +207,8 @@ int main_monitor(int argc, const char **argv) {
     int stat = fatrack_next(&fatrack, &ev);
     if (fatrack_haserror(&fatrack))
       main_log("fatrack: %s\n", fatrack.error);
-    if (stat < 0) break; if (!stat) continue;
+    if (stat < 0) break;
+    if (!stat) continue;
 
     struct fanotify_event_metadata *metadata = &ev.metadata;
 

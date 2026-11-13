@@ -218,7 +218,7 @@ int fatrack_next(struct fatrack *fatrack, struct fatrack_event *ev) {
     if (fid->hdr.info_type != FAN_EVENT_INFO_TYPE_DFID_NAME) continue;
 
     struct file_handle *handle = (struct file_handle *) fid->handle;
-    const char *filename = handle->f_handle + handle->handle_bytes;
+    const char *filename = (char *) handle->f_handle + handle->handle_bytes;
 
     if (data->pid == fatrack->self_pid) continue;
 

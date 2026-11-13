@@ -41,7 +41,7 @@ int pstrack_getppid(pid_t *dest, pid_t pid) {
     static char buffer[64];
     if (fread(buffer, sizeof(char), sizeof(buffer), fp) > 0) {
       int space = 0;
-      for (const char *p = buffer; *p; *p++) {
+      for (const char *p = buffer; *p; p++) {
         if (*p == ' ') ++space;
         /* get fourth field */
         if (space == 3) { *dest = atoi(p + 1); success = 1; break; }

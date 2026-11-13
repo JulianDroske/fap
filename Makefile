@@ -8,7 +8,7 @@ OBJS += db.o pm.o main.o
 OUT ?= fap
 
 CC ?= cc
-CFLAGS += -std=c99 -Wall
+CFLAGS += -std=c99
 LIBS += -lsqlite3
 
 all: $(OUT)

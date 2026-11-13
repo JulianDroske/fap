@@ -75,7 +75,7 @@ void db_stmt_columns_va(sqlite3_stmt *stmt, const char *spec, va_list args) {
     switch (*p) {
     case 'i': *va_arg(args, int *) = sqlite3_column_int(stmt, pos++); break;
     case 'I': *va_arg(args, int64_t *) = sqlite3_column_int64(stmt, pos++); break;
-    case 's': *va_arg(args, const char **) = sqlite3_column_text(stmt, pos++); break;
+    case 's': *va_arg(args, const char **) = (char *) sqlite3_column_text(stmt, pos++); break;
     // case 'S': strncpy(va_arg(args, char *), sqlite3_column_text(stmt, pos), va_arg(args, size_t)); break;
     default: break;
     }
