@@ -121,13 +121,13 @@ sqlite3 *db_open(const char *pathname) {
 
   sqlite3 *db = NULL;
   if (sqlite3_open(pathname, &db)) {
-    db_logerror("failed to open sqlite database %s\n", pathname);
+    db_logerror("failed to open sqlite database %s", pathname);
     return NULL;
   }
 
   char *sqlerr = NULL;
   if (sqlite3_exec(db, db_initsql, NULL, NULL, &sqlerr)) {
-    db_logerror("failed to init database: %s\n", sqlerr);
+    db_logerror("failed to init database: %s", sqlerr);
     sqlite3_free(sqlerr);
     sqlite3_close(db);
     return NULL;
@@ -142,7 +142,7 @@ int db_eval_int_bystr(sqlite3 *db, const char *sql, const char *string) {
   if (!sqlite3_prepare_v2(db, sql, -1, &stmt, NULL)) {
     sqlite3_bind_text(stmt, 1, string, -1, NULL);
     while (sqlite3_step(stmt) == SQLITE_ROW) {
-      if (i) db_logerror("db_eval_int_bystr: duplicated results received [%s]\n", sql);
+      if (i) db_logerror("db_eval_int_bystr: duplicated results received [%s]", sql);
       i = sqlite3_column_int(stmt, 0);
     }
     sqlite3_finalize(stmt);
@@ -158,7 +158,7 @@ int db_eval_int(sqlite3 *db, const char *sql, const char *spec, ...) {
   if (stmt) {
     while (sqlite3_step(stmt) == SQLITE_ROW) {
       if (i) {
-        db_logerror("db_eval_int: duplicated results received [%s]\n", sql);
+        db_logerror("db_eval_int: duplicated results received [%s]", sql);
         break;
       }
       i = sqlite3_column_int(stmt, 0);
