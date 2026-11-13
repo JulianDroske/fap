@@ -77,7 +77,7 @@ void db_stmt_columns(sqlite3_stmt *stmt, const char *spec, ...) {
   va_end(args);
 }
 
-int db_stmt_next(sqlite3_stmt *stmt, const char *spec, ...) {
+int db_stmt_next_or_fini(sqlite3_stmt *stmt, const char *spec, ...) {
   if (sqlite3_step(stmt) == SQLITE_ROW) {
     va_list args; va_start(args, spec);
     db_stmt_columns_va(stmt, spec, args);

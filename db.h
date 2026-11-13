@@ -13,7 +13,7 @@ sqlite3_stmt *db_stmt_va(sqlite3 *db, const char *sql, const char *spec, va_list
 sqlite3_stmt *db_stmt(sqlite3 *db, const char *sql, const char *spec, ...);
 void db_stmt_columns_va(sqlite3_stmt *stmt, const char *spec, va_list args);
 void db_stmt_columns(sqlite3_stmt *stmt, const char *spec, ...);
-int db_stmt_next(sqlite3_stmt *stmt, const char *spec, ...);
+int db_stmt_next_or_fini(sqlite3_stmt *stmt, const char *spec, ...);
 sqlite3 *db_open(const char *pathname);
 int db_eval_int_bystr(sqlite3 *db, const char *sql, const char *string);
 int db_eval_int(sqlite3 *db, const char *sql, const char *spec, ...);

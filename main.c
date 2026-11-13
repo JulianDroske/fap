@@ -3,6 +3,9 @@
 #  define _GNU_SOURCE 1
 #endif
 
+// TODO close sqlite3 database on sql query error
+// TODO clean up on failure in every command
+
 #include "stdint.h"
 #include "stdarg.h"
 #include "stdio.h"
@@ -77,8 +80,8 @@ void print_help() {
     "                                %P - exe pid  %N - target file path" "\n"
     "                                %O - operation(s)" "\n"
     "    -a, --all                 also record deleted files" "\n"
-    "|Xp, prop [progs/pkgs...]   set/get programs props" "\n"
-    "    -i, --ignore [bool]       set whether to ignore" "\n"
+    "|Xc, config [progs/pkgs...] config behaviour for programs" "\n"
+    "    -s, --set                set whether to ignore" "\n"
     "| l, list                   list known files and related programs" "\n"
     "    -a, --all                 also show deleted files" "\n"
     "| s, show [progs/pkgs...]   show programs and file changes" "\n"
@@ -90,8 +93,8 @@ void print_help() {
     "| o, orphans                list files created by uninstalled programs" "\n"
     "    -a, --all                 include programs with no pm/package detected" "\n"
     "    --delete                  delete these files and forget them" "\n"
+    "| f, forget                 clean records of deleted files" "\n"
     "| u, update                 recheck file, program and package status" "\n"
-    "|Xf, forget                 clean records of deleted files" "\n"
   );
 }
 
@@ -284,6 +287,32 @@ int main_monitor(int argc, const char **argv) {
 
   return 0;
 }
+
+
+// int main_config(int argc, const char **argv) {
+//   const char **opt_ignore = NULL;
+//   struct tinycli_option opts[] = {
+//     { "all", 'a', 0, &opt_all },
+//     { NULL }
+//   };
+
+//   int cliopts_len = tinycli_parse(opts, --argc, ++argv);
+//   if (cliopts_len < 0) {
+//     main_log("invalid argument around %s\n", argv[-cliopts_len - 1]);
+//     print_help(); return 1;
+//   }
+//   argc -= cliopts_len; argv += cliopts_len;
+
+//   sqlite3 *db = db_open(database_pathname);
+//   if (!db) {
+//     main_log("failed to open sqlite database %s\n", database_pathname);
+//     return 1;
+//   }
+
+//   sqlite3_close(db);
+
+//   return 0;
+// }
 
 int main_list(int argc, const char **argv) {
   const char **opt_all = NULL;
@@ -502,6 +531,35 @@ int main_orphans(int argc, const char **argv) {
   return 0;
 }
 
+int main_forget(int argc, const char **argv) {
+  struct tinycli_option opts[] = {
+    { NULL }
+  };
+
+  int cliopts_len = tinycli_parse(opts, --argc, ++argv);
+  if (cliopts_len < 0) {
+    main_log("invalid argument around %s\n", argv[-cliopts_len - 1]);
+    print_help(); return 1;
+  }
+  argc -= cliopts_len; argv += cliopts_len;
+
+  sqlite3 *db = db_open(database_pathname);
+  if (!db) {
+    main_log("failed to open sqlite database %s\n", database_pathname);
+    return 1;
+  }
+
+  sqlite3_stmt *stmt = db_stmt(db, "delete from file where not file_exist returning file_path;", NULL);
+  if (!stmt) { main_log("failed to prepare sql query\n"); return 1; }
+  const char *file_path;
+  while (db_stmt_next_or_fini(stmt, "s", &file_path))
+    printf("%s\n", file_path);
+
+  sqlite3_close(db);
+
+  return 0;
+}
+
 int main_update(int argc, const char **argv) {
   sqlite3 *db = db_open(database_pathname);
   if (!db) {
@@ -598,6 +656,7 @@ struct main_command {
   { "list", 'l', main_list },
   { "show", 's', main_show },
   { "orphans", 'o', main_orphans },
+  { "forget", 'f', main_forget },
   { "update", 'u', main_update },
   { NULL }
 };
