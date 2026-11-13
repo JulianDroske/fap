@@ -2,29 +2,31 @@
 #include "stdarg.h"
 #include "sqlite3.h"
 
-/* in sqlite3, integer primary key implies ROWID which is a simplified version of autoincrement */
+/* in sqlite3, integer primary key implies ROWID, a simplified version of autoincrement */
 const char *db_initsql =
   "create table if not exists pm("
   "  pm_id integer primary key not null,"
-  "  pm_name text not null);"
+  "  pm_name text unique not null);"
   "create table if not exists pkg("
   "  pkg_id integer primary key not null,"
   "  pm_id integer not null,"
   "  pkg_name text not null,"
+  "  pkg_exist boolean not null,"
   "  pkg_ignored boolean);"
   "create table if not exists exe("
   "  exe_id integer primary key not null,"
   "  exe_path text not null,"
+  "  exe_exist boolean not null,"
   "  exe_ignored boolean,"
   "  pkg_id integer);"
   "create table if not exists file("
   "  file_path text primary key not null,"
   "  exe_id_create integer not null,"
   "  file_time_create integer not null,"
-  "  file_exist boolean,"
+  "  file_exist boolean not null,"
   "  exe_id_delete integer,"
   "  file_time_delete integer);"
-;
+  "pragma journal_mode=WAL;";
 
 void db_logerror(void *p, int code, const char *msg) {
   fprintf(stderr, "sqlite3: %s (%d)\n", msg, code);
@@ -158,7 +160,7 @@ int db_query(sqlite3 *db, const char *sql, const char *spec, ...) {
 /* pm */
 
 int db_add_pm(sqlite3 *db, const char *name) {
-  return db_query_intbystr(db, "insert into pm(pm_name) values(?1) on conflict do update set pm_name = ?1 returning pm_id;", name);
+  return db_query_intbystr(db, "insert into pm(pm_name) values(?1) on conflict(pm_name) do update set pm_name = ?1 returning pm_id;", name);
 }
 
 /* pkg */
@@ -174,7 +176,11 @@ int db_find_pkg(sqlite3 *db, int pm_id, const char *pkg_name) {
 int db_add_pkg(sqlite3 *db, int pm_id, const char *pkg_name) {
   int pkg_id = db_find_pkg(db, pm_id, pkg_name);
   if (pkg_id) return pkg_id;
-  return db_query_int(db, "insert into pkg(pm_id, pkg_name, pkg_ignored) values(?, ?, false) returning pkg_id;", "is", pm_id, pkg_name);
+  return db_query_int(db, "insert into pkg(pm_id, pkg_name, pkg_exist, pkg_ignored) values(?, ?, true, false) returning pkg_id;", "is", pm_id, pkg_name);
+}
+
+int db_set_pkg_exist(sqlite3 *db, int pkg_id, int exist) {
+  return db_query_int(db, "update pkg set pkg_exist = ?2 where pkg_id = ?1 returning pkg_id;", "ii", pkg_id, exist);
 }
 
 // int db_del_exe(sqlite3 *db, const char *pathname) {
@@ -194,13 +200,23 @@ int db_find_exe(sqlite3 *db, const char *exe_path) {
   return db_query_intbystr(db, "select exe_id from exe where exe_path = ?;", exe_path);
 }
 
+int db_add_exe(sqlite3 *db, const char *pathname) {
+  int exe_id = db_find_exe(db, pathname);
+  if (!exe_id) exe_id = db_query_intbystr(db, "insert into exe(exe_path, exe_exist, exe_ignored, pkg_id) values(?, true, false, 0) returning exe_id;", pathname);
+  return exe_id;
+}
+
 int db_get_exe_ignored(sqlite3 *db, int exe_id) {
   /* defaults to 0 on failure */
   // TODO separate failure and ignored == 0 ?
   return db_query_int(db, "select exe_ignored from exe where exe_id = ?;", "i", exe_id);
 }
 
-int db_get_exepkg_ignored(sqlite3 *db, int exe_id) {
+int db_get_exe_pkg(sqlite3 *db, int exe_id) {
+  return db_query_int(db, "select pkg_id from exe where exe_id = ?;", "i", exe_id);
+}
+
+int db_check_exe_ignored(sqlite3 *db, int exe_id) {
   int exe_ignored = 0, pkg_ignored = 0;
   if (!db_query(db, "select exe_ignored, pkg_ignored from exe left join pkg on pkg.pkg_id = exe.pkg_id where exe_id = ?;",
     "i", exe_id, "ii", &exe_ignored, &pkg_ignored))
@@ -208,14 +224,15 @@ int db_get_exepkg_ignored(sqlite3 *db, int exe_id) {
   return exe_ignored || pkg_ignored;
 }
 
-int db_get_exe_pkg(sqlite3 *db, int exe_id) {
-  return db_query_int(db, "select pkg_id from exe where exe_id = ?;", "i", exe_id);
+int db_check_exe_exist(sqlite3 *db, int exe_id) {
+  return db_query_int(db,
+    "select exe.exe_id from exe left join pkg on pkg.pkg_id = exe.pkg_id"
+    "  where exe_id = ? and exe.exe_exist and (pkg.pkg_exist is null or pkg.pkg_exist)",
+    "i", exe_id);
 }
 
-int db_add_exe(sqlite3 *db, const char *pathname) {
-  int exe_id = db_find_exe(db, pathname);
-  if (!exe_id) exe_id = db_query_intbystr(db, "insert into exe(exe_path, exe_ignored, pkg_id) values(?, false, 0) returning exe_id;", pathname);
-  return exe_id;
+int db_set_exe_exist(sqlite3 *db, int exe_id, int exist) {
+  return db_query_int(db, "update exe set exe_exist = ?2 where exe_id = ?1 returning exe_id;", "ii", exe_id, exist);
 }
 
 int db_set_exe_pkg(sqlite3 *db, int exe_id, int pkg_id) {
@@ -223,6 +240,10 @@ int db_set_exe_pkg(sqlite3 *db, int exe_id, int pkg_id) {
 }
 
 /* file */
+
+int db_set_file_exist(sqlite3 *db, const char *file_path, int exist) {
+  return db_query_int(db, "update file set file_exist = ?2 where file_path = ?1 returning file_path is not null;", "si", file_path, exist);
+}
 
 int db_record_file_create(sqlite3 *db, const char *file_path, int exe_id, int64_t timestamp) {
   return db_query_int(db,

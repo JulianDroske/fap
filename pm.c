@@ -10,8 +10,14 @@
 
 #define PM_NAME_MAX 256
 
+void pm_trim(char *str) {
+  if (!str || !*str) return;
+  int len = strlen(str);
+  while (len && str[len - 1] == '\n') str[--len] = 0;
+}
+
 int pm_readexecv(char *buf, size_t size, const char **argv) {
-  int len = 0;
+  int len = 0; int ret = 0;
 
   int link[2] = {};
   if (pipe(link) < 0) return 0;
@@ -20,8 +26,8 @@ int pm_readexecv(char *buf, size_t size, const char **argv) {
 
   if (pid) {
     close(link[1]);
-    len = read(link[0], buf, size);
-    waitpid(pid, NULL, 0);
+    if (buf && size) len = read(link[0], buf, size);
+    waitpid(pid, &ret, 0);
   }
   else {
     dup2(link[1], STDOUT_FILENO);
@@ -32,7 +38,7 @@ int pm_readexecv(char *buf, size_t size, const char **argv) {
   }
 
   buf[len] = 0;
-  return 1;
+  return !ret;
 }
 
 int pm_readexec(char *buf, size_t size, ...) {
@@ -63,20 +69,32 @@ int pm_systemf(const char *format, ...) {
 struct pm {
   const char *name;
   int (*queryfile)(char *dest, const char *file);
+  int (*checkpkg)(int *exist, const char *name);
 };
 
 int pm_apk_queryfile(char *dest, const char *filepath) {
-  return pm_readexec(dest, PM_NAME_MAX, "apk", "info", "-qW", filepath, NULL);
+  if (!pm_readexec(dest, PM_NAME_MAX, "apk", "info", "-qW", filepath, NULL))
+    return 0;
+  pm_trim(dest);
+  return 1;
+}
+
+int pm_apk_checkpkg(int *exist, const char *name) {
+  static char output[PM_NAME_MAX];
+  if (!pm_readexec(output, sizeof(output), "apk", "info", "--installed", name, NULL))
+    return 0;
+  pm_trim(output); *exist = !strcmp(output, name);
+  return 1;
 }
 
 struct pm pm_backends[] = {
-  { "apk", pm_apk_queryfile },
+  { "apk", pm_apk_queryfile, pm_apk_checkpkg },
   { NULL },
 };
 
 struct pm *pm_autoget() {
   for (struct pm *pm = pm_backends; pm->name; ++pm) {
-    if (pm_systemf("command -v '%s' > /dev/null 2>&1", pm->name))
+    if (pm_systemf("command -v '%s' > /dev/null 2>&1;", pm->name))
       return pm;
   }
   return NULL;
@@ -90,9 +108,9 @@ struct pm *pm_get(const char *type) {
   return NULL;
 }
 
-int pm_queryfile(struct pm *pm, char *dest, const char *filepath) {
-  if (!pm->queryfile(dest, filepath)) return 0;
-  int len = strlen(dest);
-  while (len && dest[len - 1] == '\n') dest[--len] = 0;
-}
+// int pm_queryfile(struct pm *pm, char *dest, const char *filepath) {
+//   if (!pm->queryfile(dest, filepath)) return 0;
+//   int len = strlen(dest);
+//   while (len && dest[len - 1] == '\n') dest[--len] = 0;
+// }
 
