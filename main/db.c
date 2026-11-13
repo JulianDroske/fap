@@ -305,6 +305,15 @@ struct db_exepkgpm_query {
 
 int db_query_exepkgpm(sqlite3 *db, struct db_exepkgpm_query *q) {
   if (!q->stmt) {
+    /*
+      sqlite3 will mock an automatic index when joining a non-pk column
+      for instance,
+      | select * from pkg left join exe on exe.pkg_id = pkg.pkg_id;
+      where sqlite3 needs to do a full scan on exe to get matched rows
+      so optimizations on [pm:]pkg queries are not preferred for now
+
+      https://stackoverflow.com/questions/39128296
+    */
     q->stmt = db_stmt(db,
       "select exe.exe_id, exe.exe_path, exe.exe_ignored,"
       "       pkg.pkg_id, pkg.pkg_name, pkg.pkg_ignored,"

@@ -436,62 +436,44 @@ int main_show(int argc, const char **argv) {
       parse_exepkgpm(&exe_path, &pkg_name, &pm_name, arg);
     }
 
-    /*
-      sqlite3 will mock an automatic index when joining a non-pk column
-      for instance,
-      | select * from pkg left join exe on exe.pkg_id = pkg.pkg_id;
-      where sqlite3 needs to do a full scan on exe to get matched rows
-      so optimizations on [pm:]pkg queries are not preferred for now
-
-      https://stackoverflow.com/questions/39128296
-    */
-    sqlite3_stmt *stmt = db_stmt(db,
-      "select exe.exe_id, exe.exe_path, exe.pkg_id, pkg.pkg_name, pm.pm_name from exe"
-      "  left join pkg on pkg.pkg_id = exe.pkg_id"
-      "  left join pm on pm.pm_id = pkg.pm_id"
-      "  where (?1 is null or ?1 = exe.exe_path) and (?2 is null or ?2 = pkg.pkg_name) and (?3 is null or ?3 = pm.pm_name)"
-      "  order by exe.pkg_id;",
-      "sss", exe_path, pkg_name, pm_name);
-    if (!stmt) { main_log("failed to prepare sql query"); return 1; }
-
-    while (sqlite3_step(stmt) == SQLITE_ROW) {
-      int exe_id, pkg_id; const char *exe_path, *pkg_name, *pm_name;
-      db_stmt_columns(stmt, "isiss", &exe_id, &exe_path, &pkg_id, &pkg_name, &pm_name);
-
-      if (organise_package && pkg_id) {
-        if (last_pkg_id != pkg_id)
-          printf("\n[%s:%s]\n", pm_name, pkg_name);
+    struct db_exepkgpm_query q = {
+      .args = { exe_path, pkg_name, pm_name },
+    };
+    while (db_query_exepkgpm(db, &q)) {
+      if (organise_package && q.pkg_id) {
+        if (last_pkg_id != q.pkg_id)
+          printf("\n[%s:%s]\n", q.pm_name, q.pkg_name);
       }
       else {
-        if (exe_id != last_exe_id) {
-          printf("\n%s", exe_path);
-          if (pkg_name) printf(" [%s:%s]", pm_name, pkg_name);
+        if (last_exe_id != q.exe_id) {
+          printf("\n%s", q.exe_path);
+          if (pkg_name) printf(" [%s:%s]", q.pm_name, q.pkg_name);
           puts(":");
         }
       }
-      last_exe_id = exe_id; last_pkg_id = pkg_id;
+      last_exe_id = q.exe_id; last_pkg_id = q.pkg_id;
 
-      sqlite3_stmt *file_stmt = db_stmt(db,
+      sqlite3_stmt *stmt = db_stmt(db,
         "select file_exist, file_path, file_time_create, exe_id_create, exe_id_delete from file"
         "  where (file_exist or ?3) and (exe_id_create = ?1 or (not ?2 and exe_id_delete = ?1));",
-        "iii", exe_id, only_creation, show_all);
-      if (!file_stmt) { main_log("failed to prepare sql query"); continue; }
-      while (sqlite3_step(file_stmt) == SQLITE_ROW) {
+        "iii", q.exe_id, only_creation, show_all);
+      if (!stmt) { main_log("failed to prepare sql query"); continue; }
+      while (sqlite3_step(stmt) == SQLITE_ROW) {
         int exist, exe_id_create, exe_id_delete; const char *file_path;
         int64_t time_create;
-        db_stmt_columns(file_stmt, "isIii",
+        db_stmt_columns(stmt, "isIii",
           &exist, &file_path, &time_create, &exe_id_create, &exe_id_delete);
 
         static char ops[4] = {}; char *o = ops;
-        if (exe_id == exe_id_create)
+        if (q.exe_id == exe_id_create)
           { *o++ = 'C'; printf("(%s) ", timestamp_localstring(time_create)); }
-        if (exe_id == exe_id_delete) *o++ = 'D';
+        if (q.exe_id == exe_id_delete) *o++ = 'D';
         *o++ = 0;
         printf("%s %s%s\n", ops, file_path, exist? "": " (deleted)");
       }
-      sqlite3_finalize(file_stmt);
+      sqlite3_finalize(stmt);
     }
-    sqlite3_finalize(stmt);
+    if (q.stmt) sqlite3_finalize(q.stmt);
   } while (argc);
 
   return 0;
