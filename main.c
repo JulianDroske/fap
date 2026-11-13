@@ -355,39 +355,34 @@ int main_show(int argc, const char **argv) {
 
   int last_exe_id = 0, last_pkg_id = 0;
   do {
-    sqlite3_stmt *stmt = NULL;
+    const char *exe_path = NULL, *pkg_name = NULL, *pm_name = NULL;
     if (argc) {
       const char *arg = *argv++; --argc;
-      if (*arg == '/') {
-        /* exe_path */
-        stmt = db_stmt(db,
-          "select exe.exe_id, exe.exe_path, exe.pkg_id, pkg.pkg_name, pm.pm_name from exe"
-          "  left join pkg on pkg.pkg_id = exe.pkg_id"
-          "  left join pm on pm.pm_id = pkg.pm_id"
-          "  where exe_path = ?;", "s", arg);
-      }
+      if (*arg == '/') exe_path = arg;
       else {
         /* pkg_name with optional pm_name */
         static char name[PATH_MAX]; strncpy(name, arg, sizeof(name));
-        const char *pkg_name = name, *pm_name = NULL;
+        pkg_name = name;
         char *colon = strchr(pkg_name, ':');
         if (colon) { *colon = 0; pm_name = pkg_name; pkg_name = colon + 1; }
-        stmt = db_stmt(db,
-          "select exe.exe_id, exe.exe_path, exe.pkg_id, pkg.pkg_name, pm.pm_name from pkg"
-          "  left join pm on pm.pm_id = pkg.pm_id"
-          "  left join exe on exe.pkg_id = pkg.pkg_id"
-          "  where ?2 = pkg.pkg_name and (?1 is null or pm.pm_name = ?1);",
-          "ss", pm_name, pkg_name);
       }
     }
-    else {
-      /* no args, will run once */
-      stmt = db_stmt(db,
-        "select exe.exe_id, exe.exe_path, exe.pkg_id, pkg.pkg_name, pm.pm_name from pkg"
-        "  left join pm on pm.pm_id = pkg.pm_id"
-        "  left join exe on exe.pkg_id = pkg.pkg_id;", NULL, NULL);
-    }
 
+    /*
+      sqlite3 will mock an automatic index when joining a non-pk column
+      for instance,
+      | select * from pkg left join exe on exe.pkg_id = pkg.pkg_id;
+      where sqlite3 needs to do a full scan on exe to get matched rows
+      so optimizations on [pm:]pkg queries are not preferred for now
+
+      https://stackoverflow.com/questions/39128296
+    */
+    sqlite3_stmt *stmt = db_stmt(db,
+      "select exe.exe_id, exe.exe_path, exe.pkg_id, pkg.pkg_name, pm.pm_name from exe"
+      "  left join pkg on pkg.pkg_id = exe.pkg_id"
+      "  left join pm on pm.pm_id = pkg.pm_id"
+      "  where (?1 is null or ?1 = exe.exe_path) and (?2 is null or ?2 = pkg.pkg_name) and (?3 is null or ?3 = pm.pm_name);",
+      "sss", exe_path, pkg_name, pm_name);
     if (!stmt) { fprintf(stderr, "failed to prepare sql query\n"); return 1; }
 
     while (sqlite3_step(stmt) == SQLITE_ROW) {
