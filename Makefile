@@ -11,10 +11,12 @@ CC ?= cc
 CFLAGS += -std=c99
 LIBS += -lsqlite3
 
+CTH := tool/c2h.sh
+
 all: $(OUT)
 
-db.h: db.c Makefile
-	tool/c2h.sh db.c db.h _DB_H_ stdint.h sqlite3.h
+db.h: db.c $(CTH) Makefile
+	$(CTH) db.c db.h _DB_H_ stdint.h sqlite3.h
 
 %.o: %.c $(DEPS) Makefile
 	$(CC) $(CFLAGS) -c -o $@ $<

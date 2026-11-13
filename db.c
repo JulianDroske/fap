@@ -70,6 +70,7 @@ int db_stmt_next(sqlite3_stmt *stmt, const char *spec, ...) {
     return 1;
   }
   sqlite3_finalize(stmt);
+  return 0;
 }
 
 
