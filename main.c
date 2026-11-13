@@ -80,6 +80,8 @@ void print_help() {
     "                                %P - exe pid  %N - target file path" "\n"
     "                                %O - operation(s)" "\n"
     "    -a, --all                 also record deleted files" "\n"
+    "|Xp, prop [progs/pkgs...]   set/get programs props" "\n"
+    "    -i, --ignore [bool]       set whether to ignore" "\n"
     "| l, list                   list known files and related programs" "\n"
     "    -a, --all                 also show deleted files" "\n"
     "| s, show [progs/pkgs...]   show programs and file changes" "\n"
@@ -92,8 +94,7 @@ void print_help() {
     "    -a, --all                 include programs with no pm/package detected" "\n"
     "    --delete                  delete these files and remove log" "\n"
     "| u, update                 recheck file, program and package status" "\n"
-    // "  p, prune                 clean records for deleted files" "\n"
-    // "  u, update                update package info and file status" "\n"
+    "|Xf, forget                 clean records of deleted files" "\n"
   );
 }
 
