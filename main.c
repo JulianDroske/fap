@@ -57,8 +57,8 @@ void print_help() {
     "commands & params:" "\n"
     "  m, monitor [dirs...]     monitor file changes and save to database" "\n"
     "                           defaults to monitoring all dirs (/)" "\n"
-    "    -s, --save               write to database" "\n"
-    "    -o, --operations <ops>     filter file operations on output" "\n"
+    "    -n, --dry-run            do not write to database" "\n"
+    "    -o, --operations <ops>   filter file operations on output" "\n"
     "                               C: create, D: delete, M: move" "\n"
     "                               e.g. fap monitor -o 'CDM'" "\n"
     "    -f, --format <fmt>       output format" "\n"
@@ -81,10 +81,10 @@ void print_help() {
 }
 
 int main_monitor(int argc, const char **argv) {
-  const char **opt_save = NULL, **opt_operations = NULL,
+  const char **opt_dryrun = NULL, **opt_operations = NULL,
     **opt_format = NULL, **opt_all = NULL;
   struct tinycli_option opts[] = {
-    { "save", 's', 0, &opt_save },
+    { "dry-run", 'd', 0, &opt_dryrun },
     { "operations", 'o', 1, &opt_operations },
     { "format", 'f', 1, &opt_format },
     { "all", 'a', 0, &opt_all },
@@ -98,7 +98,7 @@ int main_monitor(int argc, const char **argv) {
   }
   argc -= cliopts_len; argv += cliopts_len;
 
-  int save_db = opt_save != NULL;
+  int save_db = opt_dryrun == NULL;
   unsigned int filter_ops = FAN_CREATE | FAN_DELETE | FAN_MOVE;
   if (opt_operations) {
     filter_ops = 0;
