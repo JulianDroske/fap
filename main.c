@@ -48,8 +48,11 @@ const char *timestamp_localstring(int64_t timestamp) {
   return time;
 }
 
-const char *database_pathname = "/var/lib/fap/fap.db";
-const char *package_manager_name = NULL;
+const char *main_default_database_pathname = "/var/lib/fap/fap.db";
+
+sqlite3 *main_db = NULL;
+struct pm *main_pm = NULL;
+int main_pm_id = 0;
 
 void main_log(const char *format, ...) {
   va_list args; va_start(args, format);
@@ -99,6 +102,8 @@ void print_help() {
 }
 
 int main_monitor(int argc, const char **argv) {
+  sqlite3 *db = main_db;
+
   const char **opt_dryrun = NULL, **opt_operations = NULL,
     **opt_format = NULL, **opt_all = NULL;
   struct tinycli_option opts[] = {
@@ -134,26 +139,6 @@ int main_monitor(int argc, const char **argv) {
   const char *output_format = "[%T] %E(%P): %O %F";
   if (opt_format) output_format = opt_format[1];
   int keep_deleted = opt_all != NULL;
-
-  sqlite3 *db = NULL;
-  if (save_db) {
-    db = db_open(database_pathname);
-    if (!db) {
-      main_log("failed to open sqlite database %s\n", database_pathname);
-      return 1;
-    }
-  }
-
-  int pm_id = 0; struct pm *pm = NULL;
-  if (save_db) {
-    pm = pm_get(package_manager_name);
-    if (pm) {
-      pm_id = db_add_pm(db, pm->name);
-      if (pm_id) main_log("using package manager '%s'\n", pm->name);
-      else main_log("failed to record package manager\n");
-    }
-    else main_log("warning: failed to find pm '%s'\n", package_manager_name);
-  }
 
   struct pstrack pstrack = {};
   if (!pstrack_init(&pstrack, 64)) {
@@ -260,10 +245,10 @@ int main_monitor(int argc, const char **argv) {
     }
 
     int pkg_id = db_get_exe_pkg(db, exe_id);
-    if (!pkg_id && pm && pm_id) {
+    if (!pkg_id && main_pm && main_pm_id) {
       static char name[PM_NAME_MAX];
-      if (pm->queryfile(name, proc.pathname))
-        pkg_id = db_add_pkg(db, pm_id, name);
+      if (main_pm->queryfile(name, proc.pathname))
+        pkg_id = db_add_pkg(db, main_pm_id, name);
       if (pkg_id)
         if (!db_set_exe_pkg(db, exe_id, pkg_id))
           main_log("failed to assign exe %d with pkg %d\n", exe_id, pkg_id);
@@ -283,8 +268,6 @@ int main_monitor(int argc, const char **argv) {
     }
   }
 
-  if (save_db) sqlite3_close(db);
-
   return 0;
 }
 
@@ -303,18 +286,12 @@ int main_monitor(int argc, const char **argv) {
 //   }
 //   argc -= cliopts_len; argv += cliopts_len;
 
-//   sqlite3 *db = db_open(database_pathname);
-//   if (!db) {
-//     main_log("failed to open sqlite database %s\n", database_pathname);
-//     return 1;
-//   }
-
-//   sqlite3_close(db);
-
 //   return 0;
 // }
 
 int main_list(int argc, const char **argv) {
+  sqlite3 *db = main_db;
+
   const char **opt_all = NULL;
   struct tinycli_option opts[] = {
     { "all", 'a', 0, &opt_all },
@@ -327,12 +304,6 @@ int main_list(int argc, const char **argv) {
     print_help(); return 1;
   }
   argc -= cliopts_len; argv += cliopts_len;
-
-  sqlite3 *db = db_open(database_pathname);
-  if (!db) {
-    main_log("failed to open sqlite database %s\n", database_pathname);
-    return 1;
-  }
 
   sqlite3_stmt *stmt = db_stmt(db,
     "select file.file_exist, file.file_path, file.file_time_create, file.file_time_delete,"
@@ -368,12 +339,12 @@ int main_list(int argc, const char **argv) {
   }
   sqlite3_finalize(stmt);
 
-  sqlite3_close(db);
-
   return 0;
 }
 
 int main_show(int argc, const char **argv) {
+  sqlite3 *db = main_db;
+
   const char **opt_organise_package = NULL, **opt_creation = NULL, **opt_all = NULL;
   struct tinycli_option opts[] = {
     { "packages", 'p', 0, &opt_organise_package },
@@ -392,12 +363,6 @@ int main_show(int argc, const char **argv) {
   int organise_package = opt_organise_package != NULL;
   int only_creation = opt_creation != NULL;
   int show_all = opt_all != NULL;
-
-  sqlite3 *db = db_open(database_pathname);
-  if (!db) {
-    main_log("failed to open sqlite database %s\n", database_pathname);
-    return 1;
-  }
 
   int last_exe_id = 0, last_pkg_id = 0;
   do {
@@ -472,12 +437,12 @@ int main_show(int argc, const char **argv) {
     sqlite3_finalize(stmt);
   } while (argc);
 
-  sqlite3_close(db);
-
   return 0;
 }
 
 int main_orphans(int argc, const char **argv) {
+  sqlite3 *db = main_db;
+
   const char **opt_all = NULL, **opt_delete;
   struct tinycli_option opts[] = {
     { "all", 'a', 0, &opt_all },
@@ -494,12 +459,6 @@ int main_orphans(int argc, const char **argv) {
 
   int include_nopkg = opt_all != NULL;
   int perform_delete = opt_delete != NULL;
-
-  sqlite3 *db = db_open(database_pathname);
-  if (!db) {
-    main_log("failed to open sqlite database %s\n", database_pathname);
-    return 1;
-  }
 
   sqlite3_stmt *stmt = db_stmt(db,
     "select file.file_path, file.file_time_create, exe.exe_id, exe.exe_path, pkg.pkg_name, pm.pm_name from file"
@@ -527,11 +486,12 @@ int main_orphans(int argc, const char **argv) {
   }
   sqlite3_finalize(stmt);
 
-  sqlite3_close(db);
   return 0;
 }
 
 int main_forget(int argc, const char **argv) {
+  sqlite3 *db = main_db;
+
   struct tinycli_option opts[] = {
     { NULL }
   };
@@ -543,36 +503,17 @@ int main_forget(int argc, const char **argv) {
   }
   argc -= cliopts_len; argv += cliopts_len;
 
-  sqlite3 *db = db_open(database_pathname);
-  if (!db) {
-    main_log("failed to open sqlite database %s\n", database_pathname);
-    return 1;
-  }
-
   sqlite3_stmt *stmt = db_stmt(db, "delete from file where not file_exist returning file_path;", NULL);
   if (!stmt) { main_log("failed to prepare sql query\n"); return 1; }
   const char *file_path;
   while (db_stmt_next_or_fini(stmt, "s", &file_path))
     printf("%s\n", file_path);
 
-  sqlite3_close(db);
-
   return 0;
 }
 
 int main_update(int argc, const char **argv) {
-  sqlite3 *db = db_open(database_pathname);
-  if (!db) {
-    main_log("failed to open sqlite database %s\n", database_pathname);
-    return 1;
-  }
-
-  int pm_id = 0;
-  struct pm *pm = pm_get(package_manager_name);
-  if (pm) {
-    pm_id = db_add_pm(db, pm->name);
-    if (!pm_id) main_log("failed to add package manager %s\n", pm->name);
-  } else main_log("warning: failed to get package manager %s\n", package_manager_name);
+  sqlite3 *db = main_db;
 
   /* file */
 
@@ -606,13 +547,13 @@ int main_update(int argc, const char **argv) {
     }
     else main_log("failed to check program %s existence: %d\n", exe_path, errno);
 
-    if (exist && !pkg_id && pm && pm_id) {
+    if (exist && !pkg_id && main_pm && main_pm_id) {
       static char name[PM_NAME_MAX];
-      if (pm->queryfile(name, exe_path)) {
-        pkg_id = db_add_pkg(db, pm_id, name);
-        if (!pkg_id) main_log("failed to record package [%s:%s]", pm->name, name);
+      if (main_pm->queryfile(name, exe_path)) {
+        pkg_id = db_add_pkg(db, main_pm_id, name);
+        if (!pkg_id) main_log("failed to record package [%s:%s]", main_pm->name, name);
         else if (!db_set_exe_pkg(db, exe_id, pkg_id))
-          main_log("failed to update package [%s:%s]", pm->name, name);
+          main_log("failed to update package [%s:%s]", main_pm->name, name);
       }
     }
   }
@@ -644,7 +585,6 @@ int main_update(int argc, const char **argv) {
   }
   sqlite3_finalize(stmt);
 
-  sqlite3_close(db);
   return 0;
 }
 
@@ -681,33 +621,57 @@ int main(int argc, const char **argv) {
 
   if (opt_help) { print_help(); return 0; }
 
-  if (opt_database) { database_pathname = *opt_database; }
-  else {
-    const char *path = getenv("FAP_DB");
-    if (path && *path) database_pathname = path;
-  }
-
-  if (opt_pm) package_manager_name = opt_pm[1];
-  else package_manager_name = getenv("FAP_PM");
-  if (package_manager_name && !*package_manager_name)
-    package_manager_name = NULL;
-
   argc -= cliopts_len; argv += cliopts_len;
   if (argc <= 0) {
     main_log("needs a command\n"); print_help(); return 1;
   }
 
-  const char *command = argv[0];
-  if (command[0]) for (struct main_command *cmd = commands; cmd->name; ++cmd) {
-    if (!command[1]) {
-      if (cmd->alias && command[0] == cmd->alias) return cmd->func(argc, argv);
-    }
-    else if (!strcmp(command, cmd->name)) return cmd->func(argc, argv);
+  int ret = 1;
+
+  const char *db_path = main_default_database_pathname;
+  if (opt_database) { db_path = *opt_database; }
+  else {
+    const char *path = getenv("FAP_DB");
+    if (path && *path) db_path = path;
+  }
+  if (db_path && !*db_path) db_path = NULL;
+  main_db = db_open(db_path);
+  if (!main_db) {
+    main_log("failed to open database %s", db_path);
+    return 1;
   }
 
-  main_log("unrecognized command: %s\n", command);
-  print_help();
-  return 1;
+  const char *pm_name = NULL;
+  if (opt_pm) pm_name = opt_pm[1];
+  else pm_name = getenv("FAP_PM");
+  if (pm_name && !*pm_name) pm_name = NULL;
+  main_pm = pm_get(pm_name);
+  if (main_pm) {
+    main_pm_id = db_add_pm(main_db, main_pm->name);
+    if (!main_pm_id) main_log("failed to record package manager %s\n", main_pm->name);
+  } else main_log("warning: failed to get package manager %s\n", pm_name);
+
+  const char *name = argv[0];
+  struct main_command *command = NULL;
+  if (!name[0]) { main_log("invalid command"); goto on_end; }
+  for (struct main_command *cmd = commands; !command && cmd->name; ++cmd) {
+    if (!name[1]) {
+      if (cmd->alias && name[0] == cmd->alias) command = cmd;
+    }
+    else if (!strcmp(name, cmd->name)) command = cmd;
+  }
+
+  if (!command) {
+    main_log("unrecognized command: %s\n", name);
+    print_help(); goto on_end;
+  }
+
+  ret = command->func(argc, argv);
+
+  on_end:
+  main_pm = NULL;
+  if (main_db) sqlite3_close(main_db);
+  return ret;
 }
 
 
