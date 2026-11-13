@@ -204,7 +204,6 @@ int main_monitor(int argc, const char **argv) {
     if (metadata->mask & FAN_MOVE) *o++ = 'M';
     *o = 0;
 
-    // TODO buffered output
     for (const char *f = output_format; *f; ++f) {
       if (*f == '%') {
         switch (*++f) {
@@ -311,7 +310,6 @@ int main_list(int argc, const char **argv) {
     db_stmt_columns(stmt, "isII sss sss", &exist, &file_path, &time_create, &time_delete,
       &exe_path, &pkg_name, &pm_name, &delexe_path, &delpkg_name, &delpm_name);
 
-    // TODO buffered output
     printf("%s", file_path);
     if (!exist) {
       printf(" (deleted");
@@ -421,6 +419,7 @@ int main_show(int argc, const char **argv) {
     }
     sqlite3_finalize(stmt);
   } while (argc);
+
   sqlite3_close(db);
 
   return 0;
@@ -438,6 +437,7 @@ struct main_command {
 
 int main(int argc, const char **argv) {
   sqlite3_config(SQLITE_CONFIG_LOG, db_logerror, NULL);
+  setlinebuf(stdout);
 
   const char **opt_help = NULL, **opt_database = NULL, **opt_pm = NULL;
   struct tinycli_option opts[] = {
