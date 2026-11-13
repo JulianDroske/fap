@@ -1,5 +1,10 @@
+#include "pstrack.h"
+
+#include "stdio.h"
 #include "stdlib.h"
 #include "stddef.h"
+#include "stdarg.h"
+#include "string.h"
 
 #include "unistd.h"
 #include "pthread.h"
@@ -9,29 +14,10 @@
 #include "sys/types.h"
 #include "sys/socket.h"
 #include "sys/uio.h"
+#include "linux/limits.h"
 #include "linux/connector.h"
 #include "linux/netlink.h"
 #include "linux/cn_proc.h"
-
-// TODO records all procs on init
-
-struct pstrack_procinfo {
-  pid_t ppid;
-  char pathname[PATH_MAX];
-};
-
-struct pstrack_proc {
-  char *pathname; pid_t ppid; int appear;
-};
-
-struct pstrack {
-  struct pstrack_proc *procs; size_t procs_cap;
-
-  int running;
-
-  pthread_t pthread; int pthread_inited;
-  pthread_mutex_t mutex; int mutex_inited;
-};
 
 int pstrack_realpathf(char *dest, const char *format, ...) {
   static char path[PATH_MAX];
@@ -62,7 +48,7 @@ int pstrack_getppid(pid_t *dest, pid_t pid) {
   return success;
 }
 
-// borrowed from forkstat
+/* credits: forkstat (https://github.com/ColinIanKing/forkstat) */
 
 int pstrack_forkstat_sock() {
   int sock = socket(PF_NETLINK, SOCK_DGRAM, NETLINK_CONNECTOR);

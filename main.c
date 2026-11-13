@@ -6,10 +6,15 @@
 #include "stdio.h"
 #include "stdlib.h"
 #include "string.h"
+#include "time.h"
 
-#include "tinycli.c"
-#include "fatrack.c"
-#include "pstrack.c"
+#include "unistd.h"
+#include "errno.h"
+#include "sys/stat.h"
+
+#include "tinycli.h"
+#include "fatrack.h"
+#include "pstrack.h"
 
 #include "pm.c"
 #include "db.c"

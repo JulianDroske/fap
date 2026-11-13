@@ -1,10 +1,6 @@
-#include "string.h"
+#include "tinycli.h"
 
-struct tinycli_option {
-  const char *name; char alias;
-  int follows;
-  const char ***val; int met;
-};
+#include "string.h"
 
 int tinycli_parse(struct tinycli_option *opts, int argc, const char **argv) {
   int pos = 0;

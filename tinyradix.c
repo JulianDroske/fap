@@ -1,24 +1,13 @@
+#include "tinyradix.h"
+
 #include "stddef.h"
+#include "stdlib.h"
+#include "string.h"
 
-/* a compressed radix tree implementation with buffered memory */
-/* will store useless nodes and string data */
-
-struct tinyradix_node {
-  /* left/right for parents, sibling for children */
-  /* auto calc fields */
-  int index; int before_len;
-  int left, right, sibling;
-  size_t key_off, key_len;
-  int leaf;
-};
-
-struct tinyradix {
-  char *buf; size_t buf_len, buf_cap;
-  struct tinyradix_node *nodes; int nodes_len, nodes_cap;
-
-  int parent_index;
-  int max_prefix_index; int max_prefix_len;
-};
+/*
+  a compressed radix tree implementation with buffered memory
+  may store useless nodes and string data, but prevents memory holes
+*/
 
 // void dump_tinyradix(struct tinyradix *r, int index, int depth);
 

@@ -1,5 +1,5 @@
-DEPS := tinyradix.c fatrack.c pstrack.c tinycli.c main.c db.c pm.c
-OBJS := main.o
+DEPS := tinyradix.h fatrack.h pstrack.h tinycli.h db.c pm.c
+OBJS := tinyradix.o fatrack.o pstrack.o tinycli.o main.o
 OUT ?= fap
 
 LIBS += -lsqlite3

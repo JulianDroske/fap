@@ -3,6 +3,8 @@
 #  define _GNU_SOURCE 1
 #endif
 
+#include "fatrack.h"
+
 #include "stdio.h"
 #include "string.h"
 #include "stdlib.h"
@@ -12,40 +14,13 @@
 #include "errno.h"
 #include "fcntl.h"
 #include "unistd.h"
-/* musl */
-#include "sys/stat.h"
-/* glibc */
 #include "sys/statfs.h"
 #include "sys/fanotify.h"
 // #include "linux/fanotify.h"
 #include "linux/limits.h"
 #include "mntent.h"
 
-#include "tinyradix.c"
-
-struct fatrack_fsinfo { int mount_fd; fsid_t fsid; };
-
-struct fatrack {
-  /* params */
-  uint64_t mark_masks;
-  struct tinyradix prefix_radix;
-  struct fatrack_fsinfo *fsinfos; int fsinfos_len, fsinfos_cap;
-
-  char error[256]; int error_len;
-
-  /* internals */
-  int paths_len;
-  int fd;
-  pid_t self_pid;
-
-  struct fanotify_event_metadata *metadata;
-  char events_buf[4096]; ssize_t read_size;
-};
-
-struct fatrack_event {
-  char filepath[PATH_MAX];
-  struct fanotify_event_metadata metadata;
-};
+#include "tinyradix.h"
 
 int fatrack_readlinkf(char *dest, const char *format, ...) {
   static char path[PATH_MAX];
