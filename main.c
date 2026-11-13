@@ -19,7 +19,8 @@
 #include "lib/pstrack.h"
 
 #include "pm.h"
-#include "db.h"
+
+#include "main/db.c"
 
 int check_file_exist(int *exist, const char *pathname) {
   struct stat stat;
@@ -57,6 +58,30 @@ void main_log(const char *format, ...) {
   va_end(args);
 }
 
+void parse_exepkgpm(const char **dest_exe_path, const char **dest_pkg_name, const char **dest_pm_name, const char *arg) {
+  const char *exe_path = NULL, *pkg_name = NULL, *pm_name = NULL;
+  if (*arg == '/') exe_path = arg;
+  else {
+    /* pkg_name with optional pm_name */
+    static char name[PATH_MAX]; strncpy(name, arg, sizeof(name));
+    pkg_name = name;
+    char *colon = strchr(pkg_name, ':');
+    if (colon) { *colon = 0; pm_name = pkg_name; pkg_name = colon + 1; }
+  }
+  if (dest_exe_path) *dest_exe_path = exe_path;
+  if (dest_pkg_name) *dest_pkg_name = pkg_name;
+  if (dest_pm_name) *dest_pm_name = pm_name;
+}
+
+int parse_bool(int *ret, const char *arg) {
+  if (!arg || !*arg) return 0;
+  switch (*arg) {
+  case 't': case 'T': case 'y': case 'Y': *ret = 1; return 1;
+  case 'f': case 'F': case 'n': case 'N': *ret = 0; return 1;
+  }
+  return 0;
+}
+
 void print_help() {
   main_log("%s",
     "fap - file app process monitor (demo)" "\n"
@@ -80,8 +105,9 @@ void print_help() {
     "                                %P - exe pid  %N - target file path" "\n"
     "                                %O - operation(s)" "\n"
     "    -a, --all                 also record deleted files" "\n"
-    "|Xc, config [progs/pkgs...] config behaviour for programs" "\n"
-    "    -s, --set                set whether to ignore" "\n"
+    "| c, config [progs/pkgs...] set behaviour for programs" "\n"
+    "                            list props when no option is given" "\n"
+    "    -m, --mask <bool>         whether to record their parent processes" "\n"
     "| l, list                   list known files and related programs" "\n"
     "    -a, --all                 also show deleted files" "\n"
     "| s, show [progs/pkgs...]   show programs and file changes" "\n"
@@ -98,6 +124,7 @@ void print_help() {
   );
 }
 
+// TODO prevent opening db in dry run mode
 int main_monitor(int argc, const char **argv) {
   sqlite3 *db = main_db;
 
@@ -232,7 +259,7 @@ int main_monitor(int argc, const char **argv) {
       if (exe_pid == self_pid) continue main_loop;
       if (!pstrack_query(&pstrack, &proc, exe_pid)) {
         main_log("pstrack: failed to query pid %d: %d", exe_pid, errno);
-        break;
+        continue main_loop;
       }
       exe_id = db_add_exe(db, proc.pathname);
       if (!exe_id) {
@@ -268,23 +295,63 @@ int main_monitor(int argc, const char **argv) {
   return 0;
 }
 
+int main_config(int argc, const char **argv) {
+  sqlite3 *db = main_db;
 
-// int main_config(int argc, const char **argv) {
-//   const char **opt_ignore = NULL;
-//   struct tinycli_option opts[] = {
-//     { "all", 'a', 0, &opt_all },
-//     { NULL }
-//   };
+  const char **opt_mask = NULL;
+  struct tinycli_option opts[] = {
+    { "mask", 'm', 1, &opt_mask },
+    { NULL }
+  };
 
-//   int cliopts_len = tinycli_parse(opts, --argc, ++argv);
-//   if (cliopts_len < 0) {
-//     main_log("invalid argument around %s", argv[-cliopts_len - 1]);
-//     print_help(); return 1;
-//   }
-//   argc -= cliopts_len; argv += cliopts_len;
+  int cliopts_len = tinycli_parse(opts, --argc, ++argv);
+  if (cliopts_len < 0) {
+    main_log("invalid argument around %s", argv[-cliopts_len - 1]);
+    print_help(); return 1;
+  }
+  argc -= cliopts_len; argv += cliopts_len;
 
-//   return 0;
-// }
+  int mask = 0;
+  if (opt_mask && !parse_bool(&mask, opt_mask[1]))
+    { main_log("invalid mask value: %s", opt_mask[1]); return 1; }
+  int show_mode = !opt_mask;
+
+  do {
+    const char *exe_path = NULL, *pkg_name = NULL, *pm_name = NULL;
+    if (argc) {
+      const char *arg = *argv++; --argc;
+      parse_exepkgpm(&exe_path, &pkg_name, &pm_name, arg);
+    }
+
+    struct db_exepkgpm_query q = {
+      .args = { exe_path, pkg_name, pm_name },
+    };
+    while (db_query_exepkgpm(db, &q)) {
+      if (show_mode) {
+        puts("");
+        if (pkg_name) printf("[%s:%s]\n" "mask: %d\n", q.pm_name, q.pkg_name, q.pkg_ignored);
+        else {
+          printf("%s", q.exe_path);
+          if (q.pkg_name) printf(" [%s:%s]", q.pm_name, q.pkg_name);
+          printf("\n" "mask: %d\n", q.exe_ignored);
+        }
+        continue;
+      }
+
+      if (pkg_name) {
+        if (opt_mask && !db_set_pkg_ignored(db, q.pkg_id, mask))
+          main_log("failed to set mask for pkg [%s:%s]", q.pm_name, q.pkg_name);
+      }
+      else {
+        if (opt_mask && !db_set_exe_ignored(db, q.exe_id, mask))
+          main_log("failed to set mask for program %s", q.exe_path);
+      }
+    }
+    if (q.stmt) sqlite3_finalize(q.stmt);
+  } while (argc);
+
+  return 0;
+}
 
 int main_list(int argc, const char **argv) {
   sqlite3 *db = main_db;
@@ -366,14 +433,7 @@ int main_show(int argc, const char **argv) {
     const char *exe_path = NULL, *pkg_name = NULL, *pm_name = NULL;
     if (argc) {
       const char *arg = *argv++; --argc;
-      if (*arg == '/') exe_path = arg;
-      else {
-        /* pkg_name with optional pm_name */
-        static char name[PATH_MAX]; strncpy(name, arg, sizeof(name));
-        pkg_name = name;
-        char *colon = strchr(pkg_name, ':');
-        if (colon) { *colon = 0; pm_name = pkg_name; pkg_name = colon + 1; }
-      }
+      parse_exepkgpm(&exe_path, &pkg_name, &pm_name, arg);
     }
 
     /*
@@ -503,8 +563,9 @@ int main_forget(int argc, const char **argv) {
   sqlite3_stmt *stmt = db_stmt(db, "delete from file where not file_exist returning file_path;", NULL);
   if (!stmt) { main_log("failed to prepare sql query"); return 1; }
   const char *file_path;
-  while (db_stmt_next_or_fini(stmt, "s", &file_path))
+  while (db_stmt_next(stmt, "s", &file_path))
     printf("%s\n", file_path);
+  sqlite3_finalize(stmt);
 
   return 0;
 }
@@ -573,6 +634,7 @@ int main_update(int argc, const char **argv) {
 
     if (!pkg_pm) { main_log("skipped package %s", pkg_name); continue; }
 
+    // TODO optimize
     int exist = 0;
     if (pkg_pm->checkpkg(&exist, pkg_name)) {
       if (exist != pkg_exist && !db_set_pkg_exist(db, pkg_id, exist))
@@ -590,6 +652,7 @@ struct main_command {
   int (*func)(int argc, const char **argv);
 } commands[] = {
   { "monitor", 'm', main_monitor },
+  { "config", 'c', main_config },
   { "list", 'l', main_list },
   { "show", 's', main_show },
   { "orphans", 'o', main_orphans },

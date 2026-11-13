@@ -1,5 +1,3 @@
-#include "db.h"
-
 #include "stdio.h"
 #include "string.h"
 #include "stdint.h"
@@ -75,6 +73,14 @@ void db_stmt_columns(sqlite3_stmt *stmt, const char *spec, ...) {
   va_list args; va_start(args, spec);
   db_stmt_columns_va(stmt, spec, args);
   va_end(args);
+}
+
+int db_stmt_next(sqlite3_stmt *stmt, const char *spec, ...) {
+  if (sqlite3_step(stmt) != SQLITE_ROW) return 0;
+  va_list args; va_start(args, spec);
+  db_stmt_columns_va(stmt, spec, args);
+  va_end(args);
+  return 1;
 }
 
 int db_stmt_next_or_fini(sqlite3_stmt *stmt, const char *spec, ...) {
@@ -180,7 +186,7 @@ int db_eval(sqlite3 *db, const char *sql, const char *spec, ...) {
 
     /* only runs once so no need to reset args */
     if (sqlite3_step(stmt) == SQLITE_ROW)
-      db_stmt_columns_va(stmt, out_spec, args);
+      { db_stmt_columns_va(stmt, out_spec, args); has_row = 1; }
     sqlite3_finalize(stmt);
   }
 
@@ -222,6 +228,10 @@ int db_add_pkg(sqlite3 *db, int pm_id, const char *pkg_name) {
 
 int db_set_pkg_exist(sqlite3 *db, int pkg_id, int exist) {
   return db_eval_int(db, "update pkg set pkg_exist = ?2 where pkg_id = ?1 returning pkg_id;", "ii", pkg_id, exist);
+}
+
+int db_set_pkg_ignored(sqlite3 *db, int pkg_id, int ignored) {
+  return db_eval_int(db, "update pkg set pkg_ignored = ?2 where pkg_id = ?1 returning pkg_id;", "ii", pkg_id, ignored);
 }
 
 // int db_del_exe(sqlite3 *db, const char *pathname) {
@@ -276,8 +286,39 @@ int db_set_exe_exist(sqlite3 *db, int exe_id, int exist) {
   return db_eval_int(db, "update exe set exe_exist = ?2 where exe_id = ?1 returning exe_id;", "ii", exe_id, exist);
 }
 
+int db_set_exe_ignored(sqlite3 *db, int exe_id, int ignored) {
+  return db_eval_int(db, "update exe set exe_ignored = ?2 where exe_id = ?1 returning exe_id;", "ii", exe_id, ignored);
+}
+
 int db_set_exe_pkg(sqlite3 *db, int exe_id, int pkg_id) {
   return db_eval_int(db, "update exe set pkg_id = ?2 where exe_id = ?1 returning exe_id;", "ii", exe_id, pkg_id);
+}
+
+struct db_exepkgpm_query {
+  struct { const char *exe_path, *pkg_name, *pm_name; } args;
+  sqlite3_stmt *stmt;
+
+  int exe_id, pkg_id;
+  int exe_ignored, pkg_ignored;
+  const char *exe_path, *pkg_name, *pm_name;
+};
+
+int db_query_exepkgpm(sqlite3 *db, struct db_exepkgpm_query *q) {
+  if (!q->stmt) {
+    q->stmt = db_stmt(db,
+      "select exe.exe_id, exe.exe_path, exe.exe_ignored,"
+      "       pkg.pkg_id, pkg.pkg_name, pkg.pkg_ignored,"
+      "       pm.pm_name from exe"
+      "  left join pkg on pkg.pkg_id = exe.pkg_id"
+      "  left join pm on pm.pm_id = pkg.pm_id"
+      "  where (?1 is null or ?1 = exe.exe_path) and (?2 is null or ?2 = pkg.pkg_name) and (?3 is null or ?3 = pm.pm_name)"
+      "  order by exe.pkg_id;", "sss", q->args.exe_path, q->args.pkg_name, q->args.pm_name);
+    if (!q->stmt) return 0;
+  }
+
+  return db_stmt_next(q->stmt, "isi isi s",
+    &q->exe_id, &q->exe_path, &q->exe_ignored,
+    &q->pkg_id, &q->pkg_name, &q->pkg_ignored, &q->pm_name);
 }
 
 /* file */
