@@ -32,12 +32,11 @@ void mkdirnames(const char *pathname) {
 //   if (clock_gettime(CLOCK_REALTIME, &spec)) return 0;
 //   return spec.tv_sec;
 // }
-int64_t getepochsec() { return (int64_t) time(NULL); }
-time_t epochsec_time(int64_t epoch) { return (time_t) epoch; }
-
-const char *epochsec_localstring(int64_t epochsec) {
+int64_t get_timestamp() { return (int64_t) time(NULL); }
+time_t timestamp_time(int64_t timestamp) { return (time_t) timestamp; }
+const char *timestamp_localstring(int64_t timestamp) {
   static char time[256] = {};
-  time_t t = epochsec_time(epochsec);
+  time_t t = timestamp_time(timestamp);
   if (strftime(time, sizeof(time), "%x %X", localtime(&t)) <= 0) return NULL;
   return time;
 }
@@ -177,7 +176,7 @@ int main_monitor(int argc, const char **argv) {
 
   main_loop:
   while (pstrack_alive(&pstrack)) {
-    int64_t epochsec = getepochsec();
+    int64_t timestamp = get_timestamp();
 
     struct fatrack_event ev = {};
     int stat = fatrack_next(&fatrack, &ev);
@@ -207,7 +206,7 @@ int main_monitor(int argc, const char **argv) {
     for (const char *f = output_format; *f; ++f) {
       if (*f == '%') {
         switch (*++f) {
-        case 'T': printf("%s", epochsec_localstring(epochsec)); break;
+        case 'T': printf("%s", timestamp_localstring(timestamp)); break;
         case 'E': printf("%s", proc.pathname); break;
         case 'P': printf("%d", metadata->pid); break;
         case 'F': printf("%s", ev.filepath); break;
@@ -258,11 +257,11 @@ int main_monitor(int argc, const char **argv) {
       db_del_file(db, filepath);
     else {
       if (metadata->mask & FAN_CREATE) {
-        if (!db_record_file_create(db, filepath, exe_id, epochsec))
+        if (!db_record_file_create(db, filepath, exe_id, timestamp))
           { fprintf(stderr, "failed to record file creation %s\n", filepath); break; }
       }
       if (metadata->mask & FAN_DELETE)
-        db_record_file_delete(db, filepath, exe_id, epochsec);
+        db_record_file_delete(db, filepath, exe_id, timestamp);
     }
   }
 
@@ -315,12 +314,12 @@ int main_list(int argc, const char **argv) {
       printf(" (deleted");
       if (delexe_path) printf(" by %s", delexe_path);
       if (delpkg_name) printf(" [%s:%s]", delpm_name, delpkg_name);
-      if (time_delete) printf(" @ %s", epochsec_localstring(time_delete));
+      if (time_delete) printf(" @ %s", timestamp_localstring(time_delete));
       printf(")");
     }
     printf(": %s", exe_path? exe_path: "(unknown)");
     if (pkg_name) printf(" [%s:%s]", pm_name, pkg_name);
-    if (time_create) printf(" @ %s", epochsec_localstring(time_create));
+    if (time_create) printf(" @ %s", timestamp_localstring(time_create));
     puts("");
   }
   sqlite3_finalize(stmt);

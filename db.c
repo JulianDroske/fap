@@ -224,18 +224,18 @@ int db_set_exe_pkg(sqlite3 *db, int exe_id, int pkg_id) {
 
 /* file */
 
-int db_record_file_create(sqlite3 *db, const char *file_path, int exe_id, int64_t epochsec) {
+int db_record_file_create(sqlite3 *db, const char *file_path, int exe_id, int64_t timestamp) {
   return db_query_int(db,
     "insert into file(file_path, exe_id_create, file_time_create, file_exist)"
     "  values(?1, ?2, ?3, true)"
     "  on conflict(file_path) do"
     "  update set exe_id_create = ?2, file_time_create = ?3, file_exist = true returning exe_id_create;",
-    "siI", file_path, exe_id, epochsec);
+    "siI", file_path, exe_id, timestamp);
 }
 
-int db_record_file_delete(sqlite3 *db, const char *file_path, int exe_id, int64_t epochsec) {
+int db_record_file_delete(sqlite3 *db, const char *file_path, int exe_id, int64_t timestamp) {
   return db_query_int(db, "update file set file_exist = false, exe_id_delete = ?2, file_time_delete = ?3 where file_path = ?1 returning exe_id_delete;",
-    "siI", file_path, exe_id, epochsec);
+    "siI", file_path, exe_id, timestamp);
 }
 
 int db_del_file(sqlite3 *db, const char *pathname) {
