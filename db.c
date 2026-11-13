@@ -1,4 +1,7 @@
+#include "db.h"
+
 #include "stdio.h"
+#include "stdint.h"
 #include "stdarg.h"
 #include "sqlite3.h"
 

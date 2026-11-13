@@ -1,3 +1,5 @@
+#include "pm.h"
+
 #include "stdio.h"
 #include "stdlib.h"
 #include "stddef.h"
@@ -7,8 +9,6 @@
 #include "unistd.h"
 
 #include "sys/wait.h"
-
-#define PM_NAME_MAX 256
 
 void pm_trim(char *str) {
   if (!str || !*str) return;
@@ -64,13 +64,6 @@ int pm_systemf(const char *format, ...) {
   va_end(args);
   return !system(cmdline);
 }
-
-
-struct pm {
-  const char *name;
-  int (*queryfile)(char *dest, const char *file);
-  int (*checkpkg)(int *exist, const char *name);
-};
 
 int pm_apk_queryfile(char *dest, const char *filepath) {
   if (!pm_readexec(dest, PM_NAME_MAX, "apk", "info", "-qW", filepath, NULL))

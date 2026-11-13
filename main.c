@@ -12,12 +12,12 @@
 #include "errno.h"
 #include "sys/stat.h"
 
-#include "tinycli.h"
-#include "fatrack.h"
-#include "pstrack.h"
+#include "lib/tinycli.h"
+#include "lib/fatrack.h"
+#include "lib/pstrack.h"
 
-#include "pm.c"
-#include "db.c"
+#include "pm.h"
+#include "db.h"
 
 // TODO fstat...
 void mkdirnames(const char *pathname) {
