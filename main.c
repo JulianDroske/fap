@@ -1,3 +1,4 @@
+/* enables realpath() and setlinebuf() */
 #ifndef _GNU_SOURCE
 #  define _GNU_SOURCE 1
 #endif

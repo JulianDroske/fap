@@ -1,5 +1,6 @@
-#ifndef _XOPEN_SOURCE
-#  define _XOPEN_SOURCE 500
+/* enables realpath() */
+#ifndef _GNU_SOURCE
+#  define _GNU_SOURCE 1
 #endif
 
 #include "pstrack.h"
