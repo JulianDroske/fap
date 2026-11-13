@@ -6,7 +6,7 @@
 const char *db_initsql =
   "create table if not exists pm("
   "  pm_id integer primary key not null,"
-  "  pm_name text unique not null);"
+  "  pm_name text not null);"
   "create table if not exists pkg("
   "  pkg_id integer primary key not null,"
   "  pm_id integer not null,"
@@ -160,7 +160,9 @@ int db_query(sqlite3 *db, const char *sql, const char *spec, ...) {
 /* pm */
 
 int db_add_pm(sqlite3 *db, const char *name) {
-  return db_query_intbystr(db, "insert into pm(pm_name) values(?1) on conflict(pm_name) do update set pm_name = ?1 returning pm_id;", name);
+  int pm_id = db_query_intbystr(db, "select pm_id from pm where pm_name = ?;", name);
+  if (!pm_id) pm_id = db_query_intbystr(db, "insert into pm(pm_name) values(?1) returning pm_id;", name);
+  return pm_id;
 }
 
 /* pkg */
