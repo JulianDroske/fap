@@ -336,8 +336,11 @@ int db_query_exepkgpm(sqlite3 *db, struct db_exepkgpm_query *q) {
 
 /* file */
 
-int db_set_file_exist(sqlite3 *db, const char *file_path, int exist) {
-  return db_eval_int(db, "update file set file_exist = ?2 where file_path = ?1 returning file_path is not null;", "si", file_path, exist);
+int db_set_file_exist(sqlite3 *db, const char *file_path, int exist, int64_t timestamp) {
+  return db_eval_int(db,
+    "update file set file_exist = ?2, exe_id_delete = null, file_time_delete = ?3"
+    "  where file_path = ?1 returning file_path is not null;",
+    "si", file_path, exist, timestamp);
 }
 
 int db_record_file_create(sqlite3 *db, const char *file_path, int exe_id, int64_t timestamp) {

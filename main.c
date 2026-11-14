@@ -500,8 +500,17 @@ int main_orphans(int argc, const char **argv) {
     if (pkg_name && pm_name) printf(" [%s:%s]", pm_name, pkg_name);
     puts("");
 
-    // TODO
-    if (perform_delete) main_log("file deletion is not implemented yet");
+    if (perform_delete) {
+      /*
+        remove() from C standard quals to unlink() for files and rmdir()
+        for directories, the latter will success only on empty ones.
+      */
+      if (!remove(file_path)) {
+        if (!db_set_file_exist(db, file_path, 0, get_timestamp()))
+          main_log("failed to record file deletion");
+      }
+      else main_log("failed to remove %s: %d", errno);
+    }
   }
   sqlite3_finalize(stmt);
 
@@ -545,7 +554,7 @@ int main_update(int argc, const char **argv) {
 
     int exist = 0;
     if (check_file_exist(&exist, file_path)) {
-      if (exist != file_exist && !db_set_file_exist(db, file_path, exist))
+      if (exist != file_exist && !db_set_file_exist(db, file_path, exist, get_timestamp()))
         main_log("failed to update status for file %s", file_path);
     }
     else main_log("failed to check file %s existence: %d", file_path, errno);
