@@ -320,13 +320,13 @@ int db_query_exepkgpm(sqlite3 *db, struct db_exepkgpm_query *q) {
       https://stackoverflow.com/questions/39128296
     */
   if (!q->stmt) q->stmt = db_stmt(db,
-      "select exe.exe_id, exe.exe_path, exe.exe_ignored,"
-      "       pkg.pkg_id, pkg.pkg_name, pkg.pkg_ignored,"
-      "       pm.pm_name from exe"
-      "  left join pkg on pkg.pkg_id = exe.pkg_id"
-      "  left join pm on pm.pm_id = pkg.pm_id"
-      "  where (?1 is null or ?1 = exe.exe_path) and (?2 is null or ?2 = pkg.pkg_name) and (?3 is null or ?3 = pm.pm_name)"
-      "  order by exe.pkg_id;", "sss", q->args.exe_path, q->args.pkg_name, q->args.pm_name);
+    "select exe.exe_id, exe.exe_path, exe.exe_ignored,"
+    "       pkg.pkg_id, pkg.pkg_name, pkg.pkg_ignored,"
+    "       pm.pm_name from exe"
+    "  left join pkg on pkg.pkg_id = exe.pkg_id"
+    "  left join pm on pm.pm_id = pkg.pm_id"
+    "  where (?1 is null or ?1 = exe.exe_path) and (?2 is null or ?2 = pkg.pkg_name) and (?3 is null or ?3 = pm.pm_name)"
+    "  order by exe.pkg_id;", "sss", q->args.exe_path, q->args.pkg_name, q->args.pm_name);
 
   if (!q->stmt) return 0;
   return db_stmt_next(q->stmt, "isi isi s",
@@ -356,6 +356,37 @@ int db_record_file_delete(sqlite3 *db, const char *file_path, int exe_id, int64_
 
 int db_del_file(sqlite3 *db, const char *pathname) {
   return db_eval_int_bystr(db, "delete from file where file_path = ? returning rowid;", pathname) > 0;
+}
+
+
+struct db_fileexepkgpm_all_query {
+  struct { int include_nonexist; } args;
+  sqlite3_stmt *stmt;
+
+  int file_exist;
+  const char *file_path, *exe_path, *pkg_name, *pm_name,
+    *delexe_path, *delpkg_name, *delpm_name;
+  int64_t file_time_create, file_time_delete;
+};
+
+int db_query_fileexepkgpm_all(sqlite3 *db, struct db_fileexepkgpm_all_query *q) {
+  if (!q->stmt) q->stmt = db_stmt(db,
+    "select file.file_exist, file.file_path, file.file_time_create, file.file_time_delete,"
+    "       exe.exe_path, pkg.pkg_name, pm.pm_name,"
+    "       delexe.exe_path, delpkg.pkg_name, delpm.pm_name from file"
+    "  left join exe on exe.exe_id = file.exe_id_create"
+    "  left join pkg on pkg.pkg_id = exe.pkg_id"
+    "  left join pm on pm.pm_id = pkg.pm_id"
+    "  left join exe delexe on delexe.exe_id = file.exe_id_delete"
+    "  left join pkg delpkg on delpkg.pkg_id = delexe.pkg_id"
+    "  left join pm delpm on delpm.pm_id = delpkg.pm_id"
+    "  where ? or file.file_exist;", "i", q->args.include_nonexist);
+
+  if (!q->stmt) return 0;
+  return db_stmt_next(q->stmt, "isII sss sss",
+    &q->file_exist, &q->file_path, &q->file_time_create, &q->file_time_delete,
+    &q->exe_path, &q->pkg_name, &q->pm_name,
+    &q->delexe_path, &q->delpkg_name, &q->delpm_name);
 }
 
 // int db_update_file_exist(sqlite3 *db, const char *pathname, int exist) {

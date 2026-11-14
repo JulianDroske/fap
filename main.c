@@ -366,39 +366,22 @@ int main_list(int argc, const char **argv) {
   }
   argc -= cliopts_len; argv += cliopts_len;
 
-  sqlite3_stmt *stmt = db_stmt(db,
-    "select file.file_exist, file.file_path, file.file_time_create, file.file_time_delete,"
-    "       exe.exe_path, pkg.pkg_name, pm.pm_name, delexe.exe_path, delpkg.pkg_name, delpm.pm_name from file"
-    "  left join exe on exe.exe_id = file.exe_id_create"
-    "  left join pkg on pkg.pkg_id = exe.pkg_id"
-    "  left join pm on pm.pm_id = pkg.pm_id"
-    "  left join exe delexe on delexe.exe_id = file.exe_id_delete"
-    "  left join pkg delpkg on delpkg.pkg_id = delexe.pkg_id"
-    "  left join pm delpm on delpm.pm_id = delpkg.pm_id"
-    "  where ? or file.file_exist;", "i", opt_all != NULL);
-  if (!stmt) { main_log("failed to prepare sql"); return 1; }
-  while (sqlite3_step(stmt) == SQLITE_ROW) {
-    int exist;
-    const char *file_path, *exe_path, *pkg_name, *pm_name,
-      *delexe_path, *delpkg_name, *delpm_name;
-    int64_t time_create, time_delete;
-    db_stmt_columns(stmt, "isII sss sss", &exist, &file_path, &time_create, &time_delete,
-      &exe_path, &pkg_name, &pm_name, &delexe_path, &delpkg_name, &delpm_name);
-
-    printf("%s", file_path);
-    if (!exist) {
+  struct db_fileexepkgpm_all_query q = { .args = { .include_nonexist = opt_all != NULL } };
+  while (db_query_fileexepkgpm_all(db, &q)) {
+    printf("%s", q.file_path);
+    if (!q.file_exist) {
       printf(" (deleted");
-      if (delexe_path) printf(" by %s", delexe_path);
-      if (delpkg_name) printf(" [%s:%s]", delpm_name, delpkg_name);
-      if (time_delete) printf(" @ (%s)", timestamp_localstring(time_delete));
+      if (q.delexe_path) printf(" by %s", q.delexe_path);
+      if (q.delpkg_name) printf(" [%s:%s]", q.delpm_name, q.delpkg_name);
+      if (q.file_time_delete) printf(" @ (%s)", timestamp_localstring(q.file_time_delete));
       printf(")");
     }
-    printf(": %s", exe_path? exe_path: "(unknown)");
-    if (pkg_name) printf(" [%s:%s]", pm_name, pkg_name);
-    if (time_create) printf(" @ (%s)", timestamp_localstring(time_create));
+    printf(": %s", q.exe_path? q.exe_path: "(unknown)");
+    if (q.pkg_name) printf(" [%s:%s]", q.pm_name, q.pkg_name);
+    if (q.file_time_create) printf(" @ (%s)", timestamp_localstring(q.file_time_create));
     puts("");
   }
-  sqlite3_finalize(stmt);
+  db_fini_query(&q.stmt);
 
   return 0;
 }
