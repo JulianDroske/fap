@@ -105,7 +105,9 @@ int pstrack_record(struct pstrack *t, pid_t pid, int reload) {
     size_t new_cap = pid + 64;
     void *new_mem = realloc(t->procs, new_cap * sizeof(struct pstrack_proc));
     if (!new_mem) return 0;
-    t->procs = (struct pstrack_proc *) new_mem; t->procs_cap = new_cap;
+    t->procs = (struct pstrack_proc *) new_mem;
+    memset(t->procs + t->procs_cap, 0, (new_cap - t->procs_cap) * sizeof(struct pstrack_proc));
+    t->procs_cap = new_cap;
   }
 
   struct pstrack_proc *proc = t->procs + pid;
@@ -115,7 +117,7 @@ int pstrack_record(struct pstrack *t, pid_t pid, int reload) {
     if (!proc->pathname) return 0;
     if (!pstrack_getppid(&proc->ppid, pid)) proc->ppid = 1;
     if (!pstrack_realpathf(proc->pathname, "/proc/%d/exe", pid))
-      { free(proc->pathname); return 0; }
+      { free(proc->pathname); proc->pathname = NULL; return 0; }
     proc->appear = 1;
   }
 
@@ -176,7 +178,7 @@ void pstrack_fini(struct pstrack *t) {
 
 int pstrack_init(struct pstrack *t, size_t init_cap) {
   struct pstrack_proc *procs = (struct pstrack_proc *)
-    malloc(init_cap * sizeof(struct pstrack_proc));
+    calloc(sizeof(struct pstrack_proc), init_cap);
   if (!procs) return 0;
 
   t->procs = procs; t->procs_cap = init_cap;
