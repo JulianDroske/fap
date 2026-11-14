@@ -200,7 +200,6 @@ int main_monitor(int argc, const char **argv) {
 
   pid_t self_pid = getpid();
 
-  main_loop:
   while (pstrack_alive(&pstrack)) {
     int64_t timestamp = get_timestamp();
 
@@ -250,22 +249,20 @@ int main_monitor(int argc, const char **argv) {
     /* update database */
 
     int exe_id = db_add_exe(db, proc.pathname);
-    if (!exe_id)
-      { main_log("failed to record exe %s", proc.pathname); break; }
     /* use parent process if ignored */
     int exe_pid = metadata->pid;
-    while (db_check_exe_ignored(db, exe_id)) {
+    while (exe_id && db_check_exe_ignored(db, exe_id)) {
       exe_pid = proc.ppid;
-      if (exe_pid == self_pid) continue main_loop;
+      if (exe_pid == self_pid) { exe_id = 0; break; }
       if (!pstrack_query(&pstrack, &proc, exe_pid)) {
         main_log("pstrack: failed to query pid %d: %d", exe_pid, errno);
-        continue main_loop;
+        exe_id = 0; break;
       }
       exe_id = db_add_exe(db, proc.pathname);
-      if (!exe_id) {
-        main_log("failed to add exe %s", proc.pathname);
-        continue main_loop;
-      }
+    }
+    if (!exe_id) {
+      main_log("failed to record exe %s", proc.pathname);
+      continue;
     }
 
     int pkg_id = db_get_exe_pkg(db, exe_id);
