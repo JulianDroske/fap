@@ -94,6 +94,12 @@ int db_stmt_next_or_fini(sqlite3_stmt *stmt, const char *spec, ...) {
   return 0;
 }
 
+int db_fini_query(sqlite3_stmt **stmt) {
+  if (!stmt || !*stmt) return 0;
+  sqlite3_finalize(*stmt); *stmt = NULL;
+  return 1;
+}
+
 
 /* in sqlite3, integer primary key implies ROWID, a simplified version of autoincrement */
 const char *db_initsql =
@@ -304,7 +310,6 @@ struct db_exepkgpm_query {
 };
 
 int db_query_exepkgpm(sqlite3 *db, struct db_exepkgpm_query *q) {
-  if (!q->stmt) {
     /*
       sqlite3 will mock an automatic index when joining a non-pk column
       for instance,
@@ -314,7 +319,7 @@ int db_query_exepkgpm(sqlite3 *db, struct db_exepkgpm_query *q) {
 
       https://stackoverflow.com/questions/39128296
     */
-    q->stmt = db_stmt(db,
+  if (!q->stmt) q->stmt = db_stmt(db,
       "select exe.exe_id, exe.exe_path, exe.exe_ignored,"
       "       pkg.pkg_id, pkg.pkg_name, pkg.pkg_ignored,"
       "       pm.pm_name from exe"
@@ -322,9 +327,8 @@ int db_query_exepkgpm(sqlite3 *db, struct db_exepkgpm_query *q) {
       "  left join pm on pm.pm_id = pkg.pm_id"
       "  where (?1 is null or ?1 = exe.exe_path) and (?2 is null or ?2 = pkg.pkg_name) and (?3 is null or ?3 = pm.pm_name)"
       "  order by exe.pkg_id;", "sss", q->args.exe_path, q->args.pkg_name, q->args.pm_name);
-    if (!q->stmt) return 0;
-  }
 
+  if (!q->stmt) return 0;
   return db_stmt_next(q->stmt, "isi isi s",
     &q->exe_id, &q->exe_path, &q->exe_ignored,
     &q->pkg_id, &q->pkg_name, &q->pkg_ignored, &q->pm_name);

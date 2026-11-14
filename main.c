@@ -344,7 +344,7 @@ int main_config(int argc, const char **argv) {
           main_log("failed to set mask for program %s", q.exe_path);
       }
     }
-    if (q.stmt) sqlite3_finalize(q.stmt);
+    db_fini_query(&q.stmt);
   } while (argc);
 
   return 0;
