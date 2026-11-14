@@ -160,7 +160,7 @@ int main_monitor(int argc, const char **argv) {
       }
     }
   }
-  const char *output_format = "[%T] %E(%P): %O %F";
+  const char *output_format = "(%T) %E(%P): %O %F";
   if (opt_format) output_format = opt_format[1];
   int keep_deleted = opt_all != NULL;
 
@@ -373,12 +373,12 @@ int main_list(int argc, const char **argv) {
       printf(" (deleted");
       if (q.delexe_path) printf(" by %s", q.delexe_path);
       if (q.delpkg_name) printf(" [%s:%s]", q.delpm_name, q.delpkg_name);
-      if (q.file_time_delete) printf(" @ (%s)", timestamp_localstring(q.file_time_delete));
+      if (q.file_time_delete) printf(" (%s)", timestamp_localstring(q.file_time_delete));
       printf(")");
     }
     printf(": %s", q.exe_path? q.exe_path: "(unknown)");
     if (q.pkg_name) printf(" [%s:%s]", q.pm_name, q.pkg_name);
-    if (q.file_time_create) printf(" @ (%s)", timestamp_localstring(q.file_time_create));
+    if (q.file_time_create) printf(" (%s)", timestamp_localstring(q.file_time_create));
     puts("");
   }
   db_fini_query(&q.stmt);
