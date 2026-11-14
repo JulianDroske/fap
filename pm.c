@@ -37,7 +37,7 @@ int pm_readexecv(char *buf, size_t size, const char **argv) {
     perror("execvp"); exit(1);
   }
 
-  buf[len] = 0;
+  if (buf) buf[len] = 0;
   return !ret;
 }
 
@@ -80,8 +80,22 @@ int pm_apk_checkpkg(int *exist, const char *name) {
   return 1;
 }
 
+int pm_dpkg_queryfile(char *dest, const char *filepath) {
+  if (!pm_readexec(dest, PM_NAME_MAX, "dpkg", "-S", filepath, NULL))
+    return 0;
+  char *colon = strchr(dest, ':');
+  if (!colon) return 0;
+  *colon = 0;
+  return 1;
+}
+
+int pm_dpkg_checkpkg(int *exist, const char *name) {
+  return pm_readexec(NULL, 0, "dpkg", "-s", name, NULL);
+}
+
 struct pm pm_backends[] = {
   { "apk", pm_apk_queryfile, pm_apk_checkpkg },
+  { "dpkg", pm_dpkg_queryfile, pm_dpkg_checkpkg },
   { NULL },
 };
 
